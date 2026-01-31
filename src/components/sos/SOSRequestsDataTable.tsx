@@ -173,11 +173,10 @@ export default function SOSRequestsDataTable({
   const getStatusBadge = (status: string) => {
     const statusColors: Record<string, string> = {
       'SOS Triggered': 'bg-red-100 text-red-800',
-      'Driver Assigned': 'bg-yellow-100 text-yellow-800',
       'Driver En Route': 'bg-blue-100 text-blue-800',
-      'Patient Picked Up': 'bg-purple-100 text-purple-800',
-      'At Hospital': 'bg-indigo-100 text-indigo-800',
-      'Completed': 'bg-green-100 text-green-800',
+      'Transport Arrived': 'bg-yellow-100 text-yellow-800',
+      'User Picked Up': 'bg-purple-100 text-purple-800',
+      'Arrived at Hospital': 'bg-green-100 text-green-800',
       'Cancelled': 'bg-gray-100 text-gray-800'
     }
 
@@ -255,11 +254,10 @@ export default function SOSRequestsDataTable({
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="SOS Triggered">SOS Triggered</SelectItem>
-                  <SelectItem value="Driver Assigned">Driver Assigned</SelectItem>
                   <SelectItem value="Driver En Route">Driver En Route</SelectItem>
-                  <SelectItem value="Patient Picked Up">Patient Picked Up</SelectItem>
-                  <SelectItem value="At Hospital">At Hospital</SelectItem>
-                  <SelectItem value="Completed">Completed</SelectItem>
+                  <SelectItem value="Transport Arrived">Transport Arrived</SelectItem>
+                  <SelectItem value="User Picked Up">User Picked Up</SelectItem>
+                  <SelectItem value="Arrived at Hospital">Arrived at Hospital</SelectItem>
                   <SelectItem value="Cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>

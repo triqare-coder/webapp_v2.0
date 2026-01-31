@@ -8,8 +8,8 @@ export interface SOSRequest {
   assigned_at?: string
   completed_at?: string
   auto_assigned: boolean
-  status: 'SOS Triggered' | 'Driver Assigned' | 'Driver En Route' | 'Patient Picked Up' | 'At Hospital' | 'Completed' | 'Cancelled'
-  
+  status: 'SOS Triggered' | 'Driver En Route' | 'Transport Arrived' | 'User Picked Up' | 'Arrived at Hospital' | 'Cancelled'
+
   // Joined data
   patient?: {
     user_id: string
@@ -25,7 +25,7 @@ export interface SOSRequest {
     address_line?: string
     emergency_contacts?: EmergencyContact[]
   }
-  
+
   assigned_driver?: {
     id: string
     full_name: string
@@ -86,9 +86,9 @@ export interface Driver {
 }
 
 export class SOSService {
-  // Get historical SOS requests (completed, cancelled, transferred)
+  // Get historical SOS requests (completed, cancelled)
   static async getHistoricalSOSRequests(filters?: {
-    status?: 'Completed' | 'Cancelled' | 'Transferred'
+    status?: 'Arrived at Hospital' | 'Cancelled'
     dateRange?: 'today' | 'week' | 'month' | 'quarter' | 'all'
     search?: string
     limit?: number
@@ -101,7 +101,7 @@ export class SOSService {
       let query = supabase
         .from('sos_requests')
         .select('*', { count: 'exact' })
-        .in('status', ['Completed', 'Cancelled', 'Transferred'])
+        .in('status', ['Arrived at Hospital', 'Cancelled'])
         .order('completed_at', { ascending: false })
 
       // Apply status filter
@@ -1009,9 +1009,9 @@ export class SOSService {
   static async updateStatus(sosRequestId: string, status: SOSRequest['status']): Promise<{ success: boolean; error: string | null }> {
     try {
       const updateData: any = { status }
-      
-      // Set completed_at timestamp when status is Completed
-      if (status === 'Completed') {
+
+      // Set completed_at timestamp when status is Arrived at Hospital
+      if (status === 'Arrived at Hospital') {
         updateData.completed_at = new Date().toISOString()
       }
 

@@ -11,11 +11,10 @@ export async function POST(request: NextRequest) {
 
     const requiredEnumValues = [
       'SOS Triggered',
-      'Driver Assigned',
       'Driver En Route',
-      'Patient Picked Up',
-      'At Hospital',
-      'Completed',
+      'Transport Arrived',
+      'User Picked Up',
+      'Arrived at Hospital',
       'Cancelled'
     ]
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { SOSService, SOSRequest } from '@/services/sosService'
 
 interface HistoricalSOSFilters {
-  status?: 'Completed' | 'Cancelled' | 'Transferred'
+  status?: 'Arrived at Hospital' | 'Cancelled'
   dateRange?: 'today' | 'week' | 'month' | 'quarter' | 'all'
   search?: string
   limit?: number
@@ -13,7 +13,6 @@ interface HistoricalSOSStats {
   total: number
   completed: number
   cancelled: number
-  transferred: number
   avgResponseTime: string
 }
 
@@ -26,7 +25,6 @@ export function useHistoricalSOS(filters?: HistoricalSOSFilters) {
     total: 0,
     completed: 0,
     cancelled: 0,
-    transferred: 0,
     avgResponseTime: '00:00:00'
   })
 
@@ -49,14 +47,13 @@ export function useHistoricalSOS(filters?: HistoricalSOSFilters) {
       setTotal(result.total || 0)
 
       // Calculate statistics
-      const completed = sosData.filter(sos => sos.status === 'Completed').length
+      const completed = sosData.filter(sos => sos.status === 'Arrived at Hospital').length
       const cancelled = sosData.filter(sos => sos.status === 'Cancelled').length
-      const transferred = 0 // Transferred status not available in current type
 
       // Calculate average response time for completed cases
-      const completedCases = sosData.filter(sos => 
-        sos.status === 'Completed' && 
-        sos.requested_at && 
+      const completedCases = sosData.filter(sos =>
+        sos.status === 'Arrived at Hospital' &&
+        sos.requested_at &&
         sos.assigned_at
       )
 
@@ -77,7 +74,6 @@ export function useHistoricalSOS(filters?: HistoricalSOSFilters) {
         total: sosData.length,
         completed,
         cancelled,
-        transferred,
         avgResponseTime
       })
 

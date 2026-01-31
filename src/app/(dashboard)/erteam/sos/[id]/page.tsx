@@ -73,11 +73,10 @@ export default function SOSDetailPage() {
   const getStatusColor = (status: SOSRequest['status']) => {
     switch (status) {
       case 'SOS Triggered': return 'bg-red-100 text-red-800'
-      case 'Driver Assigned': return 'bg-blue-100 text-blue-800'
-      case 'Driver En Route': return 'bg-purple-100 text-purple-800'
-      case 'Patient Picked Up': return 'bg-orange-100 text-orange-800'
-      case 'At Hospital': return 'bg-yellow-100 text-yellow-800'
-      case 'Completed': return 'bg-green-100 text-green-800'
+      case 'Driver En Route': return 'bg-blue-100 text-blue-800'
+      case 'Transport Arrived': return 'bg-yellow-100 text-yellow-800'
+      case 'User Picked Up': return 'bg-purple-100 text-purple-800'
+      case 'Arrived at Hospital': return 'bg-green-100 text-green-800'
       case 'Cancelled': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
     }
@@ -86,11 +85,10 @@ export default function SOSDetailPage() {
   const getStatusIcon = (status: SOSRequest['status']) => {
     switch (status) {
       case 'SOS Triggered': return <AlertTriangle className="h-4 w-4" />
-      case 'Driver Assigned': return <User className="h-4 w-4" />
       case 'Driver En Route': return <Truck className="h-4 w-4" />
-      case 'Patient Picked Up': return <Activity className="h-4 w-4" />
-      case 'At Hospital': return <MapPin className="h-4 w-4" />
-      case 'Completed': return <CheckCircle className="h-4 w-4" />
+      case 'Transport Arrived': return <MapPin className="h-4 w-4" />
+      case 'User Picked Up': return <Activity className="h-4 w-4" />
+      case 'Arrived at Hospital': return <CheckCircle className="h-4 w-4" />
       case 'Cancelled': return <XCircle className="h-4 w-4" />
       default: return <Timer className="h-4 w-4" />
     }

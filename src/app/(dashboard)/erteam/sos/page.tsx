@@ -219,11 +219,10 @@ export default function ERTSOSPage() {
   const getStatusColor = (status: SOSRequest['status']) => {
     switch (status) {
       case 'SOS Triggered': return 'bg-red-100 text-red-800'
-      case 'Driver Assigned': return 'bg-blue-100 text-blue-800'
-      case 'Driver En Route': return 'bg-purple-100 text-purple-800'
-      case 'Patient Picked Up': return 'bg-orange-100 text-orange-800'
-      case 'At Hospital': return 'bg-yellow-100 text-yellow-800'
-      case 'Completed': return 'bg-green-100 text-green-800'
+      case 'Driver En Route': return 'bg-blue-100 text-blue-800'
+      case 'Transport Arrived': return 'bg-yellow-100 text-yellow-800'
+      case 'User Picked Up': return 'bg-purple-100 text-purple-800'
+      case 'Arrived at Hospital': return 'bg-green-100 text-green-800'
       case 'Cancelled': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
     }
@@ -233,11 +232,10 @@ export default function ERTSOSPage() {
     // Determine priority based on status
     switch (status) {
       case 'SOS Triggered': return 'bg-red-100 text-red-800 border-red-200'
-      case 'Driver Assigned': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'Driver En Route': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'Patient Picked Up': return 'bg-orange-100 text-orange-800 border-orange-200'
-      case 'At Hospital': return 'bg-blue-100 text-blue-800 border-blue-200'
-      case 'Completed': return 'bg-green-100 text-green-800 border-green-200'
+      case 'Driver En Route': return 'bg-blue-100 text-blue-800 border-blue-200'
+      case 'Transport Arrived': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      case 'User Picked Up': return 'bg-purple-100 text-purple-800 border-purple-200'
+      case 'Arrived at Hospital': return 'bg-green-100 text-green-800 border-green-200'
       case 'Cancelled': return 'bg-gray-100 text-gray-800 border-gray-200'
       default: return 'bg-gray-100 text-gray-800 border-gray-200'
     }
@@ -246,11 +244,10 @@ export default function ERTSOSPage() {
   const getStatusIcon = (status: SOSRequest['status']) => {
     switch (status) {
       case 'SOS Triggered': return <AlertTriangle className="h-4 w-4" />
-      case 'Driver Assigned': return <User className="h-4 w-4" />
       case 'Driver En Route': return <Truck className="h-4 w-4" />
-      case 'Patient Picked Up': return <Activity className="h-4 w-4" />
-      case 'At Hospital': return <MapPin className="h-4 w-4" />
-      case 'Completed': return <CheckCircle className="h-4 w-4" />
+      case 'Transport Arrived': return <MapPin className="h-4 w-4" />
+      case 'User Picked Up': return <Activity className="h-4 w-4" />
+      case 'Arrived at Hospital': return <CheckCircle className="h-4 w-4" />
       case 'Cancelled': return <XCircle className="h-4 w-4" />
       default: return <Timer className="h-4 w-4" />
     }
@@ -272,11 +269,10 @@ export default function ERTSOSPage() {
   const sosRequestsByStatus = {
     all: sosRequests,
     'SOS Triggered': sosRequests.filter(sos => sos.status === 'SOS Triggered'),
-    'Driver Assigned': sosRequests.filter(sos => sos.status === 'Driver Assigned'),
     'Driver En Route': sosRequests.filter(sos => sos.status === 'Driver En Route'),
-    'Patient Picked Up': sosRequests.filter(sos => sos.status === 'Patient Picked Up'),
-    'At Hospital': sosRequests.filter(sos => sos.status === 'At Hospital'),
-    'Completed': sosRequests.filter(sos => sos.status === 'Completed'),
+    'Transport Arrived': sosRequests.filter(sos => sos.status === 'Transport Arrived'),
+    'User Picked Up': sosRequests.filter(sos => sos.status === 'User Picked Up'),
+    'Arrived at Hospital': sosRequests.filter(sos => sos.status === 'Arrived at Hospital'),
     'Cancelled': sosRequests.filter(sos => sos.status === 'Cancelled')
   }
 
@@ -302,9 +298,9 @@ export default function ERTSOSPage() {
   }, [activeTab, searchQuery])
 
   const activeSOSRequests = sosRequests.filter(sos =>
-    ['SOS Triggered', 'Driver Assigned', 'Driver En Route', 'Patient Picked Up', 'At Hospital'].includes(sos.status)
+    ['SOS Triggered', 'Driver En Route', 'Transport Arrived', 'User Picked Up'].includes(sos.status)
   )
-  const completedSOSRequests = sosRequests.filter(sos => sos.status === 'Completed')
+  const completedSOSRequests = sosRequests.filter(sos => sos.status === 'Arrived at Hospital')
 
   // Pagination component
   const PaginationControls = () => {
@@ -757,14 +753,13 @@ export default function ERTSOSPage() {
 
             {/* Tabs for different SOS statuses */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-8 text-xs">
+              <TabsList className="grid w-full grid-cols-7 text-xs">
                 <TabsTrigger value="all">All ({sosRequestsByStatus.all.length})</TabsTrigger>
                 <TabsTrigger value="SOS Triggered">Triggered ({sosRequestsByStatus['SOS Triggered'].length})</TabsTrigger>
-                <TabsTrigger value="Driver Assigned">Assigned ({sosRequestsByStatus['Driver Assigned'].length})</TabsTrigger>
                 <TabsTrigger value="Driver En Route">En Route ({sosRequestsByStatus['Driver En Route'].length})</TabsTrigger>
-                <TabsTrigger value="Patient Picked Up">Picked Up ({sosRequestsByStatus['Patient Picked Up'].length})</TabsTrigger>
-                <TabsTrigger value="At Hospital">At Hospital ({sosRequestsByStatus['At Hospital'].length})</TabsTrigger>
-                <TabsTrigger value="Completed">Completed ({sosRequestsByStatus['Completed'].length})</TabsTrigger>
+                <TabsTrigger value="Transport Arrived">Arrived ({sosRequestsByStatus['Transport Arrived'].length})</TabsTrigger>
+                <TabsTrigger value="User Picked Up">Picked Up ({sosRequestsByStatus['User Picked Up'].length})</TabsTrigger>
+                <TabsTrigger value="Arrived at Hospital">At Hospital ({sosRequestsByStatus['Arrived at Hospital'].length})</TabsTrigger>
                 <TabsTrigger value="Cancelled">Cancelled ({sosRequestsByStatus['Cancelled'].length})</TabsTrigger>
               </TabsList>
 
@@ -958,11 +953,10 @@ export default function ERTSOSPage() {
                 <Combobox
                   options={[
                     { value: "SOS Triggered", label: "SOS Triggered" },
-                    { value: "Driver Assigned", label: "Driver Assigned" },
                     { value: "Driver En Route", label: "Driver En Route" },
-                    { value: "Patient Picked Up", label: "Patient Picked Up" },
-                    { value: "At Hospital", label: "At Hospital" },
-                    { value: "Completed", label: "Completed" },
+                    { value: "Transport Arrived", label: "Transport Arrived" },
+                    { value: "User Picked Up", label: "User Picked Up" },
+                    { value: "Arrived at Hospital", label: "Arrived at Hospital" },
                     { value: "Cancelled", label: "Cancelled" }
                   ]}
                   value={selectedStatus}

@@ -274,8 +274,8 @@ export default function CreateSOSRequestDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="SOS Triggered">SOS Triggered</SelectItem>
-                  <SelectItem value="Driver Assigned">Driver Assigned</SelectItem>
                   <SelectItem value="Driver En Route">Driver En Route</SelectItem>
+                  <SelectItem value="Transport Arrived">Transport Arrived</SelectItem>
                 </SelectContent>
               </Select>
             </div>

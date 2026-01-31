@@ -68,39 +68,32 @@ const statusConfig = [
     description: 'New emergency requests awaiting response'
   },
   {
-    value: 'Driver Assigned',
-    label: 'Driver Assigned',
-    icon: UserCheck,
-    color: 'bg-blue-100 text-blue-800',
-    description: 'Driver assigned, preparing for dispatch'
-  },
-  {
     value: 'Driver En Route',
     label: 'En Route',
     icon: Truck,
-    color: 'bg-yellow-100 text-yellow-800',
+    color: 'bg-blue-100 text-blue-800',
     description: 'Driver en route to patient location'
   },
   {
-    value: 'Patient Picked Up',
-    label: 'Picked Up',
+    value: 'Transport Arrived',
+    label: 'Transport Arrived',
+    icon: UserCheck,
+    color: 'bg-yellow-100 text-yellow-800',
+    description: 'Ambulance arrived at patient location'
+  },
+  {
+    value: 'User Picked Up',
+    label: 'User Picked Up',
     icon: UserPlus,
     color: 'bg-purple-100 text-purple-800',
     description: 'Patient picked up, heading to hospital'
   },
   {
-    value: 'At Hospital',
-    label: 'At Hospital',
+    value: 'Arrived at Hospital',
+    label: 'Arrived at Hospital',
     icon: Building2,
-    color: 'bg-indigo-100 text-indigo-800',
-    description: 'Patient delivered to hospital'
-  },
-  {
-    value: 'Completed',
-    label: 'Completed',
-    icon: CheckCircle,
     color: 'bg-green-100 text-green-800',
-    description: 'Emergency response completed successfully'
+    description: 'Patient safely delivered to hospital'
   },
   {
     value: 'Cancelled',
@@ -126,7 +119,7 @@ export default function SOSRequestsTabs({
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-7 h-auto p-1">
+        <TabsList className="grid w-full grid-cols-6 h-auto p-1">
           {statusConfig.map((status) => {
             const Icon = status.icon
             return (

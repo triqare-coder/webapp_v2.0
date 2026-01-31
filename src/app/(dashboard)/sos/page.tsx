@@ -121,7 +121,7 @@ export default function SOSPage() {
 
 
 
-  const activeCases = filteredCases.filter(c => c.status !== 'Completed' && c.status !== 'Cancelled')
+  const activeCases = filteredCases.filter(c => c.status !== 'Arrived at Hospital' && c.status !== 'Cancelled')
   const pendingCases = filteredCases.filter(c => c.status === 'SOS Triggered')
 
   return (

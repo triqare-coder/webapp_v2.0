@@ -31,7 +31,7 @@ import { SOSHistoryDataTable } from '@/components/sos/SOSHistoryDataTable'
 
 export default function SOSHistoryPage() {
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Completed' | 'Cancelled' | 'Transferred'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'Arrived at Hospital' | 'Cancelled'>('all')
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month' | 'quarter'>('all')
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
 
@@ -225,15 +225,14 @@ export default function SOSHistoryPage() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | 'Completed' | 'Cancelled' | 'Transferred')}>
+                <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | 'Arrived at Hospital' | 'Cancelled')}>
                   <SelectTrigger className="w-40">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="Completed">Completed</SelectItem>
+                    <SelectItem value="Arrived at Hospital">Arrived at Hospital</SelectItem>
                     <SelectItem value="Cancelled">Cancelled</SelectItem>
-                    <SelectItem value="Transferred">Transferred</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as 'all' | 'today' | 'week' | 'month' | 'quarter')}>

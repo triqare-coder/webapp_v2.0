@@ -448,7 +448,7 @@ export default function SOSHistoryDetailPage() {
             {sosCase.completed_at && (
               <div className="flex items-start space-x-3">
                 <div className={`flex-shrink-0 w-2 h-2 rounded-full mt-2 ${
-                  sosCase.status === 'Completed' ? 'bg-green-500' :
+                  sosCase.status === 'Arrived at Hospital' ? 'bg-green-500' :
                   sosCase.status === 'Cancelled' ? 'bg-gray-500' : 'bg-blue-500'
                 }`}></div>
                 <div>

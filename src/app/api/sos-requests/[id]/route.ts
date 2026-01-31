@@ -148,7 +148,7 @@ export async function PUT(
 
     if (status !== undefined) {
       // Validate status
-      const validStatuses = ['SOS Triggered', 'Driver Assigned', 'Driver En Route', 'Patient Picked Up', 'At Hospital', 'Completed', 'Cancelled']
+      const validStatuses = ['SOS Triggered', 'Driver En Route', 'Transport Arrived', 'User Picked Up', 'Arrived at Hospital', 'Cancelled']
       if (!validStatuses.includes(status)) {
         return NextResponse.json(
           { success: false, error: 'Invalid status value' },
@@ -157,8 +157,8 @@ export async function PUT(
       }
       updateData.status = status
 
-      // Auto-set completed_at when status is Completed
-      if (status === 'Completed' && !completed_at) {
+      // Auto-set completed_at when status is Arrived at Hospital
+      if (status === 'Arrived at Hospital' && !completed_at) {
         updateData.completed_at = new Date().toISOString()
       }
     }
