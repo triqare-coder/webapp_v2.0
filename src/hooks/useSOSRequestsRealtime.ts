@@ -143,66 +143,97 @@ export function useSOSRequestsRealtime(
     }
 
     let channel: RealtimeChannel
+    let retryTimeout: NodeJS.Timeout
 
     // Subscribe to sos_requests table changes
-    channel = supabase
-      .channel('sos-requests-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'sos_requests'
-        },
-        (payload: RealtimePostgresChangesPayload<any>) => {
-          console.log('🚨 NEW EMERGENCY - Realtime INSERT:', payload.new)
-          playAlert()
-          fetchSOSRequests()
-          if (onInsert) onInsert(payload.new)
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'sos_requests'
-        },
-        (payload: RealtimePostgresChangesPayload<any>) => {
-          console.log('🔄 SOS UPDATE - Realtime UPDATE:', payload.new)
-          setSOSRequests(prev => prev.map(sos =>
-            sos.id === payload.new.id
-              ? { ...sos, ...payload.new }
-              : sos
-          ))
-          if (onUpdate) onUpdate(payload.new)
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'sos_requests'
-        },
-        (payload: RealtimePostgresChangesPayload<any>) => {
-          console.log('❌ SOS CANCELLED - Realtime DELETE:', payload.old)
-          const deletedId = (payload.old as any)?.id
-          if (deletedId) {
-            setSOSRequests(prev => prev.filter(sos => sos.id !== deletedId))
-            if (onDelete) onDelete(deletedId)
+    const setupChannel = () => {
+      channel = supabase
+        .channel('sos-requests-realtime')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'sos_requests'
+          },
+          (payload: RealtimePostgresChangesPayload<any>) => {
+            console.log('🚨 NEW EMERGENCY - Realtime INSERT:', payload.new)
+            playAlert()
+            fetchSOSRequests()
+            if (onInsert) onInsert(payload.new)
           }
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 SOS Realtime connection status:', status)
-        setIsConnected(status === 'SUBSCRIBED')
-      })
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'sos_requests'
+          },
+          (payload: RealtimePostgresChangesPayload<any>) => {
+            console.log('🔄 SOS UPDATE - Realtime UPDATE:', payload.new)
+            // Refetch to get complete data with joined relations (assigned_driver, patient, etc.)
+            // This ensures we get the full driver object when a driver is assigned
+            fetchSOSRequests()
+            if (onUpdate) onUpdate(payload.new)
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'sos_requests'
+          },
+          (payload: RealtimePostgresChangesPayload<any>) => {
+            console.log('❌ SOS CANCELLED - Realtime DELETE:', payload.old)
+            const deletedId = (payload.old as any)?.id
+            if (deletedId) {
+              setSOSRequests(prev => prev.filter(sos => sos.id !== deletedId))
+              if (onDelete) onDelete(deletedId)
+            }
+          }
+        )
+        .subscribe((status, err) => {
+          console.log('📡 SOS Realtime connection status:', status, err)
+
+          if (status === 'SUBSCRIBED') {
+            setIsConnected(true)
+            console.log('✅ Successfully connected to SOS Realtime')
+          } else if (status === 'CHANNEL_ERROR') {
+            setIsConnected(false)
+            console.error('❌ Realtime channel error:', err)
+            // Retry connection after 5 seconds
+            retryTimeout = setTimeout(() => {
+              console.log('🔄 Retrying Realtime connection...')
+              supabase.removeChannel(channel)
+              setupChannel()
+            }, 5000)
+          } else if (status === 'TIMED_OUT') {
+            setIsConnected(false)
+            console.error('⏱️ Realtime connection timed out')
+            // Retry connection after 5 seconds
+            retryTimeout = setTimeout(() => {
+              console.log('🔄 Retrying Realtime connection...')
+              supabase.removeChannel(channel)
+              setupChannel()
+            }, 5000)
+          } else if (status === 'CLOSED') {
+            setIsConnected(false)
+            console.log('🔌 Realtime connection closed')
+          } else {
+            setIsConnected(false)
+          }
+        })
+    }
+
+    setupChannel()
 
     // Cleanup on unmount
     return () => {
       console.log('🔌 Unsubscribing from SOS realtime')
-      supabase.removeChannel(channel)
+      if (retryTimeout) clearTimeout(retryTimeout)
+      if (channel) supabase.removeChannel(channel)
       setIsConnected(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

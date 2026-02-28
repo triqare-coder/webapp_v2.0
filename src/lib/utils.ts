@@ -56,15 +56,15 @@ export function calculateAge(dateOfBirth: Date): number {
 export function getSeverityColor(severity: string): string {
   switch (severity) {
     case 'low':
-      return 'bg-green-100 text-green-800'
+      return 'bg-green-100 text-green-800 border border-green-200'
     case 'medium':
-      return 'bg-yellow-100 text-yellow-800'
+      return 'bg-yellow-100 text-yellow-800 border border-yellow-200'
     case 'high':
-      return 'bg-orange-100 text-orange-800'
+      return 'bg-orange-100 text-orange-800 border border-orange-200'
     case 'critical':
-      return 'bg-red-100 text-red-800'
+      return 'bg-[#f5cccc] text-[#cc3333] border border-[#cc3333]/30 font-semibold'
     default:
-      return 'bg-gray-100 text-gray-800'
+      return 'bg-[#e6e6e6] text-[#666666] border border-[#d1d5db]'
   }
 }
 
@@ -72,22 +72,22 @@ export function getStatusColor(status: string): string {
   switch (status) {
     case 'available':
     case 'completed':
-      return 'bg-green-100 text-green-800'
+      return 'bg-green-100 text-green-800 border border-green-200'
     case 'assigned':
     case 'on_duty':
     case 'dispatched':
-      return 'bg-blue-100 text-blue-800'
+      return 'bg-[#ccd9e6] text-[#003366] border border-[#003366]/30 font-medium'
     case 'en_route':
-      return 'bg-yellow-100 text-yellow-800'
+      return 'bg-yellow-100 text-yellow-800 border border-yellow-200'
     case 'pending':
-      return 'bg-orange-100 text-orange-800'
+      return 'bg-orange-100 text-orange-800 border border-orange-200'
     case 'cancelled':
     case 'off_duty':
     case 'maintenance':
     case 'out_of_service':
-      return 'bg-red-100 text-red-800'
+      return 'bg-[#f5cccc] text-[#cc3333] border border-[#cc3333]/30'
     default:
-      return 'bg-gray-100 text-gray-800'
+      return 'bg-[#e6e6e6] text-[#666666] border border-[#d1d5db]'
   }
 }
 

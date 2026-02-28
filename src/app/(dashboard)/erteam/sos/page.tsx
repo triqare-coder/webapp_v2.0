@@ -159,7 +159,7 @@ export default function ERTSOSPage() {
         setAssignDialogOpen(false)
         setSelectedDriver('')
         setSelectedSOS(null)
-        await loadData()
+        // No need to call loadData() - Realtime hook will automatically refetch with joined data
       }
     } catch (error) {
       toast.error('Failed to assign driver')
@@ -451,7 +451,7 @@ export default function ERTSOSPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 font-medium"
+                      className="h-7 px-2 text-[#003366] hover:text-[#002952] hover:bg-[#ccd9e6] font-medium border border-transparent hover:border-[#003366]/20"
                       onClick={(e) => {
                         e.stopPropagation()
                         window.location.href = `tel:${sos.patient?.phone || ''}`
@@ -469,7 +469,7 @@ export default function ERTSOSPage() {
                           key={contact.id}
                           size="sm"
                           variant="ghost"
-                          className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 font-medium text-xs"
+                          className="h-7 px-2 text-[#cc3333] hover:text-[#b32d2d] hover:bg-[#f5cccc] font-medium text-xs border border-transparent hover:border-[#cc3333]/20"
                           onClick={(e) => {
                             e.stopPropagation()
                             window.location.href = `tel:${contact.phone}`
@@ -491,7 +491,7 @@ export default function ERTSOSPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 font-medium text-xs"
+                      className="h-7 px-2 text-[#cc3333] hover:text-[#b32d2d] hover:bg-[#f5cccc] font-medium text-xs border border-transparent hover:border-[#cc3333]/20"
                       onClick={(e) => {
                         e.stopPropagation()
                         window.location.href = `tel:${sos.patient?.emergency_contact_phone || ''}`
@@ -517,7 +517,7 @@ export default function ERTSOSPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-7 px-2 text-green-600 hover:text-green-700 hover:bg-green-50 font-medium"
+                      className="h-7 px-2 text-green-600 hover:text-green-700 hover:bg-green-50 font-medium border border-transparent hover:border-green-200"
                       onClick={(e) => {
                         e.stopPropagation()
                         window.location.href = `tel:${sos.assigned_driver?.phone}`
