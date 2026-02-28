@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (sosRequest.status === 'Completed' || sosRequest.status === 'Cancelled') {
+    if (sosRequest.status === 'Arrived at Hospital' || sosRequest.status === 'Cancelled') {
       return NextResponse.json(
         { success: false, error: 'Cannot assign driver to completed or cancelled SOS request' },
         { status: 400 }
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         .from('sos_requests')
         .select('id, status')
         .in('id', sosRequestIds)
-        .in('status', ['SOS Triggered', 'Driver Assigned', 'Driver En Route', 'Patient Picked Up', 'At Hospital'])
+        .in('status', ['SOS Triggered', 'Driver En Route', 'Transport Arrived', 'User Picked Up'])
 
       if (sosError) {
         console.error('Error checking active SOS requests:', sosError)
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
     const { data: statusUpdate, error: statusUpdateError } = await supabase
       .from('sos_requests')
       .update({
-        status: 'Driver Assigned',
+        status: 'Driver En Route',
         assigned_at: new Date().toISOString()
       })
       .eq('id', sos_request_id)

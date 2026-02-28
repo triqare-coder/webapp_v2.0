@@ -679,13 +679,10 @@ export class SOSService {
         .select('driver_id')
         .not('driver_id', 'is', null)
         .in('status', [
-          'Driver Assigned',
-          'Driver En Route',
-          'Patient Picked Up',
-          'At Hospital',
           'SOS Triggered',
-          'driver_assigned',
-          'in_progress'
+          'Driver En Route',
+          'Transport Arrived',
+          'User Picked Up'
         ])
 
       if (busyError) {
@@ -959,7 +956,7 @@ export class SOSService {
         .update({
           driver_id: driverId,
           assigned_at: new Date().toISOString(),
-          status: 'Driver Assigned'
+          status: 'Driver En Route'
         })
         .eq('id', sosRequestId)
 
@@ -987,7 +984,7 @@ export class SOSService {
       const { error: updateError } = await supabase
         .from('sos_requests')
         .update({
-          status: 'Driver Assigned',
+          status: 'Driver En Route',
           assigned_at: new Date().toISOString()
         })
         .eq('id', sosRequestId)
@@ -1257,12 +1254,9 @@ export class SOSService {
         .not('driver_id', 'is', null)
         .in('status', [
           'SOS Triggered',
-          'Driver Assigned',
           'Driver En Route',
-          'Patient Picked Up',
-          'At Hospital',
-          'driver_assigned',
-          'in_progress'
+          'Transport Arrived',
+          'User Picked Up'
         ])
 
       if (busyError) {

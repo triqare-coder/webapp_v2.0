@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
         assignedDriverIds = assignments
           .filter(assignment => {
             const sosRequest = assignment.sos_requests as any
-            return sosRequest.status !== 'Completed' && sosRequest.status !== 'Cancelled'
+            return sosRequest.status !== 'Arrived at Hospital' && sosRequest.status !== 'Cancelled'
           })
           .map(assignment => assignment.driver_id)
       }

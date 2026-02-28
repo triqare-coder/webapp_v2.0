@@ -448,34 +448,59 @@ export default function ERTSOSPage() {
               <td className="p-3">
                 <div className="text-sm space-y-1">
                   {sos.patient?.phone && (
-                    <div className="flex items-center">
-                      <Phone className="h-3 w-3 mr-1" />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 font-medium"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        window.location.href = `tel:${sos.patient?.phone || ''}`
+                      }}
+                      title={`Call Patient: ${sos.patient.phone}`}
+                    >
+                      <Phone className="h-3.5 w-3.5 mr-1.5" />
                       {sos.patient.phone}
-                    </div>
+                    </Button>
                   )}
                   {sos.patient?.emergency_contacts && sos.patient.emergency_contacts.length > 0 && (
                     <div className="space-y-1">
-                      {sos.patient.emergency_contacts.slice(0, 2).map((contact, index) => (
-                        <div key={contact.id} className="flex items-center text-red-600">
+                      {sos.patient.emergency_contacts.slice(0, 1).map((contact) => (
+                        <Button
+                          key={contact.id}
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 font-medium text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            window.location.href = `tel:${contact.phone}`
+                          }}
+                          title={`Emergency: ${contact.name}${contact.relationship ? ` (${contact.relationship})` : ''}`}
+                        >
                           <AlertTriangle className="h-3 w-3 mr-1" />
-                          <span className="text-xs">
-                            {contact.name}: {contact.phone}
-                            {contact.relationship && ` (${contact.relationship})`}
-                          </span>
-                        </div>
+                          {contact.phone}
+                        </Button>
                       ))}
-                      {sos.patient.emergency_contacts.length > 2 && (
-                        <div className="text-xs text-gray-500">
-                          +{sos.patient.emergency_contacts.length - 2} more
+                      {sos.patient.emergency_contacts.length > 1 && (
+                        <div className="text-xs text-gray-500 pl-2">
+                          +{sos.patient.emergency_contacts.length - 1} more contact{sos.patient.emergency_contacts.length > 2 ? 's' : ''}
                         </div>
                       )}
                     </div>
                   )}
                   {sos.patient?.emergency_contact_phone && !sos.patient?.emergency_contacts?.length && (
-                    <div className="flex items-center text-red-600">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 font-medium text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        window.location.href = `tel:${sos.patient?.emergency_contact_phone || ''}`
+                      }}
+                      title={`Call Emergency Contact: ${sos.patient.emergency_contact_phone}`}
+                    >
                       <AlertTriangle className="h-3 w-3 mr-1" />
                       {sos.patient.emergency_contact_phone}
-                    </div>
+                    </Button>
                   )}
                 </div>
               </td>
@@ -487,15 +512,28 @@ export default function ERTSOSPage() {
               </td>
               <td className="p-3">
                 {sos.assigned_driver ? (
-                  <div>
-                    <div className="font-medium">{sos.assigned_driver.full_name}</div>
-                    <div className="text-sm text-gray-500">{sos.assigned_driver.phone}</div>
+                  <div className="space-y-1">
+                    <div className="font-medium text-sm">{sos.assigned_driver.full_name}</div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-green-600 hover:text-green-700 hover:bg-green-50 font-medium"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        window.location.href = `tel:${sos.assigned_driver?.phone}`
+                      }}
+                      title={`Call Driver: ${sos.assigned_driver.phone}`}
+                    >
+                      <Phone className="h-3.5 w-3.5 mr-1.5" />
+                      {sos.assigned_driver.phone}
+                    </Button>
                   </div>
                 ) : (
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.stopPropagation()
                       setSelectedSOS(sos)
                       // Reload available drivers when opening assign dialog
                       const driversResult = await SOSService.getAvailableDrivers()
