@@ -170,11 +170,9 @@ export function useSOSRequestsRealtime(
         },
         (payload: RealtimePostgresChangesPayload<any>) => {
           console.log('🔄 SOS UPDATE - Realtime UPDATE:', payload.new)
-          setSOSRequests(prev => prev.map(sos =>
-            sos.id === payload.new.id
-              ? { ...sos, ...payload.new }
-              : sos
-          ))
+          // Refetch to get complete joined data (assigned_driver, patient details)
+          // since payload.new only contains raw DB columns, not joined relations
+          fetchSOSRequests()
           if (onUpdate) onUpdate(payload.new)
         }
       )
