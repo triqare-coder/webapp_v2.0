@@ -51,12 +51,21 @@
 \i 01_schema/05_triggers.sql
 
 -- =============================================
+-- STEP 5b: DRIVER APPLICATIONS (QSoS Phase 2)
+-- =============================================
+
+\echo ''
+\echo 'Step 5b: Creating Driver Applications table + functions...'
+\i 01_schema/06_driver_applications.sql
+
+-- =============================================
 -- STEP 6: SECURITY - RLS POLICIES
 -- =============================================
 
 \echo ''
 \echo 'Step 6: Applying Row Level Security Policies...'
 \i 02_security/01_rls_policies.sql
+\i 02_security/03_driver_applications_rls.sql
 
 -- =============================================
 -- STEP 7: SECURITY - GRANTS

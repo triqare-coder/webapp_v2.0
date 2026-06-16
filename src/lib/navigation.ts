@@ -113,6 +113,12 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
           roles: ['admin']
         },
         {
+          title: 'Driver Applications',
+          href: '/admin/driver-applications',
+          icon: FileText,
+          roles: ['admin']
+        },
+        {
           title: 'Transport Companies',
           href: '/admin/transport-companies',
           icon: Building2,

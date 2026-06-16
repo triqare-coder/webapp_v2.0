@@ -18,6 +18,9 @@
 \echo ''
 \echo 'Dropping Tables...'
 
+DROP TABLE IF EXISTS public.driver_applications CASCADE;
+DROP TABLE IF EXISTS public.driver_application_ref_counters CASCADE;
+DROP TABLE IF EXISTS public.submission_attempts CASCADE;
 DROP TABLE IF EXISTS public.pending_csv_imports CASCADE;
 DROP TABLE IF EXISTS public.announcements CASCADE;
 DROP TABLE IF EXISTS public.configurations CASCADE;
@@ -45,6 +48,8 @@ DROP TABLE IF EXISTS public.users CASCADE;
 \echo 'Dropping Functions...'
 
 DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
+DROP FUNCTION IF EXISTS public.next_driver_application_ref() CASCADE;
+DROP FUNCTION IF EXISTS public.record_submission_attempt(TEXT, TEXT, INTEGER, INTERVAL) CASCADE;
 
 -- =============================================
 -- DROP EXTENSIONS (Optional - usually keep these)

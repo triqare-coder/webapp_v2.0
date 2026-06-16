@@ -125,6 +125,29 @@ WHERE schemaname = 'public';
 -- =============================================
 
 \echo ''
+\echo 'Checking Driver Applications (QSoS Phase 2)...'
+SELECT to_regclass('public.driver_applications')           IS NOT NULL AS "driver_applications table",
+       to_regclass('public.driver_application_ref_counters') IS NOT NULL AS "ref counter table",
+       to_regclass('public.submission_attempts')           IS NOT NULL AS "rate-limit table";
+
+\echo ''
+\echo 'Driver application helper functions:'
+SELECT proname AS "Function"
+FROM pg_proc
+WHERE proname IN ('next_driver_application_ref', 'record_submission_attempt')
+ORDER BY proname;
+
+\echo ''
+\echo 'anon must have NO privileges on driver_applications (expect 0 rows):'
+SELECT grantee, privilege_type
+FROM information_schema.role_table_grants
+WHERE table_name = 'driver_applications' AND grantee = 'anon';
+
+\echo ''
+\echo 'driver-documents storage bucket (expect public = f):'
+SELECT id, public FROM storage.buckets WHERE id = 'driver-documents';
+
+\echo ''
 \echo 'Checking Seed Data...'
 
 \echo ''

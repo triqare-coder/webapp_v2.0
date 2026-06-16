@@ -35,6 +35,9 @@ const isPublicRoute = createRouteMatcher([
   '/api/drivers(.*)', // Drivers API
   '/api/patients(.*)', // Patients API
   '/api/hospitals(.*)', // Hospitals API
+  '/drivers', // Public QSoS driver landing page
+  '/drivers/apply(.*)', // Public QSoS driver application form
+  '/api/drivers/applications(.*)', // Public submit + document upload (also covered by /api/drivers(.*))
   '/test-users(.*)'
 ])
 

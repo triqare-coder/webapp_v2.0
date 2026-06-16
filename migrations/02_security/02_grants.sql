@@ -50,6 +50,15 @@ GRANT SELECT ON public.announcements TO anon, authenticated, service_role;
 -- Pending imports (service role only)
 GRANT ALL ON public.pending_csv_imports TO service_role;
 
+-- Driver applications (QSoS Phase 2) — service role ONLY.
+-- Deliberately NO grant to anon/authenticated: all access is via service-role
+-- server routes (public submit/upload + Clerk-guarded admin read/update).
+GRANT SELECT, INSERT, UPDATE ON public.driver_applications TO service_role;
+GRANT ALL ON public.driver_application_ref_counters TO service_role;
+GRANT ALL ON public.submission_attempts TO service_role;
+GRANT EXECUTE ON FUNCTION public.next_driver_application_ref() TO service_role;
+GRANT EXECUTE ON FUNCTION public.record_submission_attempt(TEXT, TEXT, INTEGER, INTERVAL) TO service_role;
+
 -- =============================================
 -- GRANT SEQUENCE PERMISSIONS
 -- =============================================
