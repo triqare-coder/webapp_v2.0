@@ -26,7 +26,6 @@ import {
   CheckCircle
 } from 'lucide-react'
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { UserService } from '@/services/userService'
 import { DatabaseUser } from '@/lib/supabase'
 import { useUsersRealtime } from '@/hooks/useUsersRealtime'
 import { toast } from 'sonner'
@@ -118,7 +117,10 @@ export default function AdminUsersPage() {
 
   const loadStats = useCallback(async () => {
     try {
-      const { data, error } = await UserService.getUserStats()
+      const res = await fetch('/api/users/stats')
+      const json = await res.json()
+      const data = res.ok ? json.stats : null
+      const error: string | null = res.ok ? null : (json.error || 'Failed to load stats')
       if (error) {
         console.error('Failed to load stats:', error)
       } else {
@@ -153,7 +155,9 @@ export default function AdminUsersPage() {
 
     setDeleteLoading(true)
     try {
-      const { error } = await UserService.deleteUser(userToDelete.id)
+      const res = await fetch(`/api/users/${userToDelete.id}`, { method: 'DELETE' })
+      const json = await res.json()
+      const error: string | null = res.ok && json.success ? null : (json.error || 'Failed to delete user')
       if (error) {
         toast.error('Failed to delete user: ' + error)
       } else {

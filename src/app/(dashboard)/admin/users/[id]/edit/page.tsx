@@ -20,7 +20,6 @@ import {
   Trash2
 } from 'lucide-react'
 import Link from 'next/link'
-import { UserService } from '@/services/userService'
 import { DatabaseUser } from '@/lib/supabase'
 
 export default function AdminUserEditPage() {
@@ -48,7 +47,10 @@ export default function AdminUserEditPage() {
         setLoading(true)
         setError(null)
         
-        const { data, error } = await UserService.getUserById(userId)
+        const res = await fetch(`/api/users/${userId}`)
+        const json = await res.json()
+        const data: DatabaseUser | null = res.ok ? json.user : null
+        const error: string | null = res.ok ? null : (json.error || 'Failed to load user')
         
         if (error) {
           throw new Error(error)
@@ -99,7 +101,14 @@ export default function AdminUserEditPage() {
         role: formData.role
       }
 
-      const { data, error } = await UserService.updateUser(userId, updateData)
+      const res = await fetch(`/api/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      })
+      const json = await res.json()
+      const data: DatabaseUser | null = res.ok && json.success ? json.user : null
+      const error: string | null = res.ok && json.success ? null : (json.error || 'Failed to update user')
       
       if (error) {
         throw new Error(error)
@@ -128,7 +137,9 @@ export default function AdminUserEditPage() {
     setError(null)
     
     try {
-      const { error } = await UserService.deleteUser(userId)
+      const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' })
+      const json = await res.json()
+      const error: string | null = res.ok && json.success ? null : (json.error || 'Failed to delete user')
       
       if (error) {
         throw new Error(error)
