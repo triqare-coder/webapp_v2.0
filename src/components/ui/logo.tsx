@@ -16,7 +16,7 @@ const sizeClasses = {
   xl: 'h-32 w-32',
   '2xl': 'h-40 w-40',
   '3xl': 'h-48 w-48',
-  header: 'w-[140px] h-[90px]'
+  header: 'w-[190px] h-[120px]'
 }
 
 const textSizeClasses = {

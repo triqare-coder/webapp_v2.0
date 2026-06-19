@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Smartphone, Download, QrCode, LogOut, ArrowRight } from 'lucide-react'
 import { UserRole } from '@/types'
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/appLinks'
 
 interface MobileAppRedirectProps {
   role: UserRole
@@ -28,8 +29,8 @@ export function MobileAppRedirect({ role, userName }: MobileAppRedirectProps) {
         'Emergency contact notifications',
         'Location-based services'
       ],
-      appStoreUrl: 'https://apps.apple.com/app/emergency-response-patient',
-      playStoreUrl: 'https://play.google.com/store/apps/details?id=com.emergency.patient',
+      appStoreUrl: APP_STORE_URL,
+      playStoreUrl: PLAY_STORE_URL,
       icon: '🏥',
       color: 'bg-blue-600 hover:bg-blue-700'
     },
@@ -44,8 +45,8 @@ export function MobileAppRedirect({ role, userName }: MobileAppRedirectProps) {
         'Vehicle status updates',
         'Route optimization'
       ],
-      appStoreUrl: 'https://apps.apple.com/app/emergency-response-driver',
-      playStoreUrl: 'https://play.google.com/store/apps/details?id=com.emergency.driver',
+      appStoreUrl: APP_STORE_URL,
+      playStoreUrl: PLAY_STORE_URL,
       icon: '🚑',
       color: 'bg-green-600 hover:bg-green-700'
     }

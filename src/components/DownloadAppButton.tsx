@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Download, Smartphone } from 'lucide-react'
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/appLinks'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,7 +67,7 @@ export function DownloadAppButton({
         <DropdownMenuSeparator />
         
         <DropdownMenuItem 
-          onClick={() => window.open('https://apps.apple.com/app/emergency-response', '_blank')}
+          onClick={() => window.open(APP_STORE_URL, '_blank')}
           className="cursor-pointer"
         >
           <div className="flex items-center">
@@ -76,7 +77,7 @@ export function DownloadAppButton({
         </DropdownMenuItem>
         
         <DropdownMenuItem 
-          onClick={() => window.open('https://play.google.com/store/apps/details?id=com.emergency', '_blank')}
+          onClick={() => window.open(PLAY_STORE_URL, '_blank')}
           className="cursor-pointer"
         >
           <div className="flex items-center">

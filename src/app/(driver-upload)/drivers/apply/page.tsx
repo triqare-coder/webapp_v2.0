@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Info, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { Info, CheckCircle2, XCircle, Loader2, User, Truck, FileText, ClipboardList, Upload, Ambulance, ArrowLeft } from 'lucide-react'
 import { DocumentUploadField } from '@/components/driver-application/DocumentUploadField'
 import { useDocumentUpload } from '@/hooks/useDocumentUpload'
 import { DOCUMENT_TYPES } from '@/lib/storage/driverDocuments'
@@ -166,7 +166,7 @@ export default function DriverApplyPage() {
   // ---- success / failure screens -------------------------------------------
   if (phase === 'success') {
     return (
-      <div className="mx-auto max-w-md space-y-5 py-8 text-center">
+      <div className="mx-auto max-w-md space-y-5 px-6 py-12 text-center">
         <CheckCircle2 className="mx-auto h-16 w-16 text-green-600" />
         <h1 className="text-2xl font-bold text-[#1a1a1a]">Application Submitted Successfully!</h1>
         <p className="text-sm text-[#555555]">
@@ -186,7 +186,7 @@ export default function DriverApplyPage() {
 
   if (phase === 'error') {
     return (
-      <div className="mx-auto max-w-md space-y-5 py-8 text-center">
+      <div className="mx-auto max-w-md space-y-5 px-6 py-12 text-center">
         <XCircle className="mx-auto h-16 w-16 text-[#cc3333]" />
         <h1 className="text-2xl font-bold text-[#1a1a1a]">Submission Failed</h1>
         <p className="text-sm text-[#555555]">
@@ -243,29 +243,44 @@ export default function DriverApplyPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-      <div>
-        <h1 className="text-xl font-bold text-[#1a1a1a]">Driver Application</h1>
-        <p className="mt-1 text-sm text-[#666666]">
-          Complete all sections and upload the required documents.
+    <div className="mx-auto max-w-3xl px-6 py-12">
+      <Link href="/drivers" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-slate-900">
+        <ArrowLeft className="h-4 w-4" /> Back to Drive with QSoS
+      </Link>
+      <div className="mt-4">
+        <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold" style={{ background: '#f5cccc66', color: '#cc3333' }}>
+          <Ambulance className="h-3.5 w-3.5" /> QSoS Ambulance Partner Application
+        </span>
+        <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">Driver application</h1>
+        <p className="mt-2 text-slate-600">
+          Complete all five sections and upload the required documents. It takes about 10 minutes.
         </p>
       </div>
 
+      <form onSubmit={handleSubmit} className="mt-8 space-y-6" noValidate>
+
       {/* Mandatory note */}
-      <div className="flex items-start gap-2 rounded-md border border-[#ccd9e6] bg-[#ccd9e6]/30 px-3 py-2.5 text-sm text-[#003366]">
+      <div className="flex items-start gap-2 rounded-xl border border-[#ccd9e6] bg-[#ccd9e6]/40 px-4 py-3 text-sm text-[#003366]">
         <Info className="mt-0.5 h-4 w-4 shrink-0" />
         <p>Fields marked with <span className="font-semibold text-[#cc3333]">*</span> are mandatory.</p>
       </div>
 
       {topError && (
-        <div className="rounded-md border border-[#cc3333] bg-[#f5cccc]/30 px-3 py-2.5 text-sm font-medium text-[#cc3333]">
+        <div className="rounded-xl border border-[#cc3333] bg-[#f5cccc]/40 px-4 py-3 text-sm font-medium text-[#cc3333]">
           {topError}
         </div>
       )}
 
       {/* 1 · Personal */}
-      <Card className="border-[#e6e6e6]">
-        <CardHeader className="pb-3"><CardTitle className="text-base text-[#003366]">Personal Information</CardTitle></CardHeader>
+      <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3 text-base">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: '#ccd9e6' }}>
+              <User className="h-5 w-5" style={{ color: '#003366' }} />
+            </span>
+            <span className="font-semibold text-slate-900">Personal information</span>
+          </CardTitle>
+        </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {textField('full_name', 'Full Name', { required: true, placeholder: 'As per official documents', className: 'sm:col-span-2' })}
           {textField('phone', 'Phone', { required: true, type: 'tel', inputMode: 'numeric', placeholder: '10-digit mobile number' })}
@@ -292,8 +307,15 @@ export default function DriverApplyPage() {
       </Card>
 
       {/* 2 · Vehicle */}
-      <Card className="border-[#e6e6e6]">
-        <CardHeader className="pb-3"><CardTitle className="text-base text-[#003366]">Vehicle Information</CardTitle></CardHeader>
+      <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3 text-base">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: '#ccd9e6' }}>
+              <Truck className="h-5 w-5" style={{ color: '#003366' }} />
+            </span>
+            <span className="font-semibold text-slate-900">Vehicle information</span>
+          </CardTitle>
+        </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {textField('vehicle_registration', 'Vehicle Registration Number', { required: true, placeholder: 'e.g. KA01AB1234' })}
           <div id="field-vehicle_type" className="space-y-1.5">
@@ -313,8 +335,15 @@ export default function DriverApplyPage() {
       </Card>
 
       {/* 3 · License */}
-      <Card className="border-[#e6e6e6]">
-        <CardHeader className="pb-3"><CardTitle className="text-base text-[#003366]">License Information</CardTitle></CardHeader>
+      <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3 text-base">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: '#ccd9e6' }}>
+              <FileText className="h-5 w-5" style={{ color: '#003366' }} />
+            </span>
+            <span className="font-semibold text-slate-900">License information</span>
+          </CardTitle>
+        </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {textField('license_number', 'Driving License Number', { required: true, placeholder: 'License number' })}
           {textField('license_expiry', 'License Expiry Date', { required: true, type: 'date' })}
@@ -332,8 +361,15 @@ export default function DriverApplyPage() {
       </Card>
 
       {/* 4 · Additional */}
-      <Card className="border-[#e6e6e6]">
-        <CardHeader className="pb-3"><CardTitle className="text-base text-[#003366]">Additional Information</CardTitle></CardHeader>
+      <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3 text-base">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: '#ccd9e6' }}>
+              <ClipboardList className="h-5 w-5" style={{ color: '#003366' }} />
+            </span>
+            <span className="font-semibold text-slate-900">Additional information</span>
+          </CardTitle>
+        </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {textField('driving_experience_years', 'Years of Driving Experience', { type: 'number', placeholder: 'Optional' })}
           <div className="space-y-1.5">
@@ -356,10 +392,15 @@ export default function DriverApplyPage() {
       </Card>
 
       {/* 5 · Documents */}
-      <Card className="border-[#e6e6e6]">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-[#003366]">Document Upload</CardTitle>
-          <p className="text-xs text-[#666666]">All documents are mandatory. Max 10 MB per file.</p>
+      <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3 text-base">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: '#ccd9e6' }}>
+              <Upload className="h-5 w-5" style={{ color: '#003366' }} />
+            </span>
+            <span className="font-semibold text-slate-900">Document upload</span>
+          </CardTitle>
+          <p className="mt-1 text-xs text-[#666666]">All documents are mandatory. Max 10 MB per file.</p>
         </CardHeader>
         <CardContent className="space-y-3">
           {DOCUMENT_TYPES.map((def) => (
@@ -392,5 +433,6 @@ export default function DriverApplyPage() {
         </Button>
       </div>
     </form>
+    </div>
   )
 }
