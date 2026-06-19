@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,7 +27,11 @@ import {
   FileSpreadsheet,
   Upload,
   Download,
-  XCircle
+  XCircle,
+  History,
+  ClipboardList,
+  Power,
+  Ban
 } from 'lucide-react'
 import { RoleGuard } from '@/components/auth/RoleGuard'
 import { toast } from 'sonner'
@@ -56,6 +60,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { supabase } from '@/lib/supabase'
+import { TripHistoryDialog } from '@/components/transport/TripHistoryDialog'
+import { SosLogDialog } from '@/components/transport/SosLogDialog'
+import {
+  deriveDriverStatus,
+  DRIVER_STATUS_LABEL,
+  type DriverLiveStatus,
+  type DriverDashboardStats,
+} from '@/lib/transport/driverDashboard'
+
+const LIVE_STATUS_STYLE: Record<DriverLiveStatus, string> = {
+  on_trip: 'bg-blue-100 text-blue-800',
+  online: 'bg-green-100 text-green-800',
+  offline: 'bg-gray-100 text-gray-700',
+  unavailable: 'bg-amber-100 text-amber-800',
+}
 
 interface Driver {
   user_id: string
@@ -109,9 +129,76 @@ export default function TransportDriversPage() {
   const [csvResult, setCsvResult] = useState<{ success: number; failed: number; errors: string[] } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Transport Dashboard Enhancement state
+  const [stats, setStats] = useState<Record<string, DriverDashboardStats>>({})
+  const [tripDriver, setTripDriver] = useState<Driver | null>(null)
+  const [sosDriver, setSosDriver] = useState<Driver | null>(null)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/transport/drivers/stats')
+      if (!res.ok) return
+      const data = (await res.json()) as { byId: Record<string, DriverDashboardStats> }
+      setStats(data.byId || {})
+    } catch {
+      /* non-fatal — row metrics just stay at last-known values */
+    }
+  }, [])
+
   useEffect(() => {
     fetchDrivers()
+    fetchStats()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Always-current refresher for realtime handlers (avoids stale closures / re-subscribes).
+  const refreshRef = useRef<() => void>(() => {})
+  refreshRef.current = () => {
+    fetchDrivers({ silent: true })
+    fetchStats()
+  }
+
+  // Live updates: re-pull drivers + per-row counts when drivers, SOS requests, or
+  // the assignment log change — no page refresh. Debounced to coalesce bursts.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const bump = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => refreshRef.current(), 800)
+    }
+    const channel = supabase
+      .channel('transport-driver-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sos_requests' }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sos_request_assigned' }, bump)
+      .subscribe()
+    return () => {
+      if (timer) clearTimeout(timer)
+      supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleToggleStatus = async (driver: Driver) => {
+    const action = driver.status === 'inactive' ? 'activate' : 'deactivate'
+    setTogglingId(driver.user_id)
+    try {
+      const res = await fetch(`/api/transport/drivers/${driver.user_id}/toggle-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      if (!res.ok) throw new Error()
+      toast.success(action === 'activate' ? 'Driver activated' : 'Driver deactivated')
+      fetchDrivers({ silent: true })
+      fetchStats()
+    } catch {
+      toast.error('Failed to update driver status')
+    } finally {
+      setTogglingId(null)
+    }
+  }
 
   const handleDeleteDriver = (driver: Driver) => {
     setDriverToDelete(driver)
@@ -222,9 +309,9 @@ export default function TransportDriversPage() {
     URL.revokeObjectURL(url)
   }
 
-  const fetchDrivers = async () => {
+  const fetchDrivers = async (opts?: { silent?: boolean }) => {
     try {
-      setIsLoading(true)
+      if (!opts?.silent) setIsLoading(true)
       setError(null)
 
       const params = new URLSearchParams()
@@ -336,7 +423,7 @@ export default function TransportDriversPage() {
             <div className="text-center">
               <AlertTriangle className="h-8 w-8 mx-auto mb-4 text-red-600" />
               <p className="text-red-600 mb-4">{error}</p>
-              <Button onClick={fetchDrivers}>
+              <Button onClick={() => fetchDrivers()}>
                 Try Again
               </Button>
             </div>
@@ -438,8 +525,15 @@ export default function TransportDriversPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {filteredDrivers.map((driver) => (
-                <div key={driver.user_id} className="border rounded-lg hover:shadow-md transition-shadow">
+              {filteredDrivers.map((driver) => {
+                const s = stats[driver.user_id]
+                const live = s?.currentStatus ?? deriveDriverStatus(driver)
+                return (
+                <div
+                  key={driver.user_id}
+                  className={`border rounded-lg transition-shadow hover:shadow-md ${s?.amber ? 'border-amber-400 bg-amber-50' : ''}`}
+                  title={s?.amber ? 'High SOS cancellations/rejections in the last 30 days' : undefined}
+                >
                   <div className="p-4">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-4">
@@ -502,18 +596,30 @@ export default function TransportDriversPage() {
                       </div>
 
                       <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <Badge className={getStatusColor(driver.status)}>
-                            {getStatusLabel(driver.status)}
+                        <div className="text-right space-y-1.5">
+                          <Badge className={LIVE_STATUS_STYLE[live]}>
+                            {DRIVER_STATUS_LABEL[live]}
                           </Badge>
+                          {/* Auto-updating per-driver summary counts */}
+                          <div className="flex items-center justify-end gap-3 text-xs">
+                            <span className="text-gray-700">
+                              <span className="font-semibold">{s?.totalTrips ?? 0}</span> trips
+                            </span>
+                            <span className="text-red-700">
+                              <span className="font-semibold">{s?.sosCancellations ?? 0}</span> cancel
+                            </span>
+                            <span className="text-amber-700">
+                              <span className="font-semibold">{s?.sosRejections ?? 0}</span> reject
+                            </span>
+                          </div>
                           {driver.is_verified && (
-                            <div className="flex items-center gap-1 mt-1 text-sm text-green-600">
+                            <div className="flex items-center justify-end gap-1 text-sm text-green-600">
                               <CheckCircle className="h-3 w-3" />
                               Verified
                             </div>
                           )}
                           {driver.latitude && driver.longitude && (
-                            <div className="flex items-center gap-1 mt-1 text-sm text-blue-600">
+                            <div className="flex items-center justify-end gap-1 text-sm text-blue-600">
                               <Navigation className="h-3 w-3" />
                               GPS Active
                             </div>
@@ -533,7 +639,24 @@ export default function TransportDriversPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-
+                              <DropdownMenuItem onClick={() => setTripDriver(driver)}>
+                                <History className="h-4 w-4 mr-2" />
+                                View Trip History
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setSosDriver(driver)}>
+                                <ClipboardList className="h-4 w-4 mr-2" />
+                                View SOS Log
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleToggleStatus(driver)}
+                                disabled={togglingId === driver.user_id}
+                              >
+                                {driver.status === 'inactive' ? (
+                                  <><Power className="h-4 w-4 mr-2" />Activate</>
+                                ) : (
+                                  <><Ban className="h-4 w-4 mr-2" />Deactivate</>
+                                )}
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => window.open(`mailto:${driver.user?.email}`)}>
                                 <Mail className="h-4 w-4 mr-2" />
                                 Send Email
@@ -552,7 +675,8 @@ export default function TransportDriversPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                )
+              })}
               {filteredDrivers.length === 0 && (
                 <div className="text-center py-12">
                   <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
@@ -700,6 +824,24 @@ export default function TransportDriversPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Trip History / SOS Log modals (US-T03, US-T04) */}
+        {tripDriver && (
+          <TripHistoryDialog
+            driverId={tripDriver.user_id}
+            driverName={tripDriver.user?.full_name || 'Driver'}
+            open={!!tripDriver}
+            onOpenChange={(o) => { if (!o) setTripDriver(null) }}
+          />
+        )}
+        {sosDriver && (
+          <SosLogDialog
+            driverId={sosDriver.user_id}
+            driverName={sosDriver.user?.full_name || 'Driver'}
+            open={!!sosDriver}
+            onOpenChange={(o) => { if (!o) setSosDriver(null) }}
+          />
+        )}
       </div>
     </RoleGuard>
   )

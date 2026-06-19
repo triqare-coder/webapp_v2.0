@@ -100,6 +100,36 @@ export function exportToCSV(data: SOSRequest[], filename: string = 'sos-history.
 }
 
 /**
+ * Generic CSV download from headers + rows. Used by the transport dashboard's
+ * trip-history and SOS-log exports. Quotes when needed and neutralizes
+ * spreadsheet formula injection (leading = + - @).
+ */
+export function downloadCSV(
+  headers: string[],
+  rows: (string | number | null | undefined)[][],
+  filename: string,
+) {
+  const esc = (value: string | number | null | undefined): string => {
+    if (value === null || value === undefined) return ''
+    let v = String(value)
+    if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`
+    if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`
+    return v
+  }
+  const content = [headers.map(esc).join(','), ...rows.map((r) => r.map(esc).join(','))].join('\n')
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.setAttribute('href', url)
+  link.setAttribute('download', filename)
+  link.style.visibility = 'hidden'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+/**
  * Export SOS history data to PDF format
  */
 export async function exportToPDF(data: SOSRequest[], filename: string = 'sos-history.pdf') {
