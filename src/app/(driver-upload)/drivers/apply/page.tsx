@@ -14,10 +14,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Info, CheckCircle2, XCircle, Loader2, User, Truck, FileText, ClipboardList, Upload, Ambulance, ArrowLeft } from 'lucide-react'
+import { Info, CheckCircle2, XCircle, Loader2, User, Truck, FileText, ClipboardList, Upload, Ambulance, ArrowLeft, ArrowRight } from 'lucide-react'
 import { DocumentUploadField } from '@/components/driver-application/DocumentUploadField'
 import { useDocumentUpload } from '@/hooks/useDocumentUpload'
-import { DOCUMENT_TYPES } from '@/lib/storage/driverDocuments'
+import { DOCUMENT_TYPES, REQUIRED_DOCUMENT_KEYS } from '@/lib/storage/driverDocuments'
 import {
   driverApplicationSchema,
   VEHICLE_TYPES,
@@ -32,6 +32,9 @@ interface FormState {
   email: string
   date_of_birth: string
   address: string
+  city: string
+  state: string
+  pincode: string
   aadhaar_number: string
   emergency_contact_name: string
   emergency_contact_phone: string
@@ -49,6 +52,7 @@ interface FormState {
 
 const EMPTY: FormState = {
   full_name: '', phone: '', email: '', date_of_birth: '', address: '',
+  city: '', state: '', pincode: '',
   aadhaar_number: '', emergency_contact_name: '', emergency_contact_phone: '',
   vehicle_registration: '', vehicle_type: '', vehicle_make_model: '', vehicle_year: '',
   ambulance_permit_number: '', license_number: '', license_expiry: '', license_type: '',
@@ -57,7 +61,8 @@ const EMPTY: FormState = {
 
 // Display order for "scroll to first error".
 const FIELD_ORDER: (keyof FormState)[] = [
-  'full_name', 'phone', 'email', 'date_of_birth', 'address', 'aadhaar_number',
+  'full_name', 'phone', 'email', 'date_of_birth', 'address', 'city', 'state', 'pincode',
+  'aadhaar_number',
   'emergency_contact_name', 'emergency_contact_phone', 'vehicle_registration',
   'vehicle_type', 'vehicle_make_model', 'vehicle_year', 'ambulance_permit_number',
   'license_number', 'license_expiry', 'license_type', 'driving_experience_years',
@@ -65,6 +70,7 @@ const FIELD_ORDER: (keyof FormState)[] = [
 
 type Errors = Partial<Record<keyof FormState, string>>
 type Phase = 'form' | 'success' | 'error'
+type Step = 'details' | 'documents'
 
 function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -79,6 +85,7 @@ export default function DriverApplyPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [referenceNumber, setReferenceNumber] = useState<string>('')
+  const [step, setStep] = useState<Step>('details')
 
   const uploads = useDocumentUpload(draftId)
 
@@ -139,16 +146,41 @@ export default function DriverApplyPage() {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    setSubmitAttempted(true)
-
+  // Step 1 → Step 2: validate every typed field (the whole schema lives in
+  // step 1), then advance. Documents are gathered on step 2.
+  const handleNext = () => {
     const errs = computeErrors()
     if (Object.keys(errs).length) {
       setErrors(errs)
       setTopError(VALIDATION_MESSAGES.missingMandatory)
       const first = FIELD_ORDER.find((k) => errs[k])
       if (first) scrollToId(`field-${first}`)
+      return
+    }
+    setTopError(null)
+    setStep('documents')
+    window.scrollTo({ top: 0 })
+  }
+
+  const goBack = () => {
+    setTopError(null)
+    setStep('details')
+    window.scrollTo({ top: 0 })
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitAttempted(true)
+
+    // Defensive: typed-field errors should already be caught at the step-1
+    // gate, but if any remain, return to step 1 and surface the first one.
+    const errs = computeErrors()
+    if (Object.keys(errs).length) {
+      setErrors(errs)
+      setTopError(VALIDATION_MESSAGES.missingMandatory)
+      setStep('details')
+      const first = FIELD_ORDER.find((k) => errs[k])
+      if (first) requestAnimationFrame(() => scrollToId(`field-${first}`))
       return
     }
     if (uploads.isUploading) {
@@ -253,17 +285,36 @@ export default function DriverApplyPage() {
         </span>
         <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">Driver application</h1>
         <p className="mt-2 text-slate-600">
-          Complete all five sections and upload the required documents. It takes about 10 minutes.
+          Two quick steps — your details, then upload your documents. It takes about 10 minutes.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-6" noValidate>
 
-      {/* Mandatory note */}
-      <div className="flex items-start gap-2 rounded-xl border border-[#ccd9e6] bg-[#ccd9e6]/40 px-4 py-3 text-sm text-[#003366]">
-        <Info className="mt-0.5 h-4 w-4 shrink-0" />
-        <p>Fields marked with <span className="font-semibold text-[#cc3333]">*</span> are mandatory.</p>
+      {/* Step progress */}
+      <div className="flex items-center gap-3 text-sm font-medium">
+        <span className="flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#003366] text-xs font-bold text-white">
+            {step === 'documents' ? <CheckCircle2 className="h-4 w-4" /> : '1'}
+          </span>
+          <span className={step === 'details' ? 'text-slate-900' : 'text-slate-500'}>Your details</span>
+        </span>
+        <span className="h-px flex-1 bg-slate-200" />
+        <span className="flex items-center gap-2">
+          <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${step === 'documents' ? 'bg-[#003366] text-white' : 'bg-slate-200 text-slate-500'}`}>
+            2
+          </span>
+          <span className={step === 'documents' ? 'text-slate-900' : 'text-slate-500'}>Documents</span>
+        </span>
       </div>
+
+      {/* Mandatory note — step 1 only */}
+      {step === 'details' && (
+        <div className="flex items-start gap-2 rounded-xl border border-[#ccd9e6] bg-[#ccd9e6]/40 px-4 py-3 text-sm text-[#003366]">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>Fields marked with <span className="font-semibold text-[#cc3333]">*</span> are mandatory.</p>
+        </div>
+      )}
 
       {topError && (
         <div className="rounded-xl border border-[#cc3333] bg-[#f5cccc]/40 px-4 py-3 text-sm font-medium text-[#cc3333]">
@@ -271,6 +322,8 @@ export default function DriverApplyPage() {
         </div>
       )}
 
+      {step === 'details' && (
+      <>
       {/* 1 · Personal */}
       <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
         <CardHeader>
@@ -288,11 +341,11 @@ export default function DriverApplyPage() {
           {textField('date_of_birth', 'Date of Birth', { required: true, type: 'date' })}
           {textField('aadhaar_number', 'Aadhaar Number', { required: true, inputMode: 'numeric', placeholder: '12-digit Aadhaar' })}
           <div id="field-address" className="sm:col-span-2 space-y-1.5">
-            <Label htmlFor="address" className="text-sm font-medium text-[#333333]">Residential Address<span className="ml-0.5 text-[#cc3333]">*</span></Label>
+            <Label htmlFor="address" className="text-sm font-medium text-[#333333]">Address<span className="ml-0.5 text-[#cc3333]">*</span></Label>
             <Textarea
               id="address"
               value={form.address}
-              placeholder="House no., street, area, city, state, pincode"
+              placeholder="House no., street, area"
               onChange={(e) => set('address', e.target.value)}
               onBlur={() => handleBlur('address')}
               aria-invalid={!!errors.address}
@@ -301,6 +354,9 @@ export default function DriverApplyPage() {
             />
             {errors.address && <p className="text-xs text-[#cc3333]">{errors.address}</p>}
           </div>
+          {textField('city', 'City', { required: true, placeholder: 'e.g. Bengaluru' })}
+          {textField('state', 'State', { required: true, placeholder: 'e.g. Karnataka' })}
+          {textField('pincode', 'Pincode', { required: true, inputMode: 'numeric', placeholder: '6-digit pincode' })}
           {textField('emergency_contact_name', 'Emergency Contact Name', { required: true, placeholder: 'Full name' })}
           {textField('emergency_contact_phone', 'Emergency Contact Phone', { required: true, type: 'tel', inputMode: 'numeric', placeholder: '10-digit mobile number' })}
         </CardContent>
@@ -330,7 +386,7 @@ export default function DriverApplyPage() {
           </div>
           {textField('vehicle_make_model', 'Make and Model', { placeholder: 'Optional — e.g. Force Traveller' })}
           {textField('vehicle_year', 'Year of Manufacture', { type: 'number', placeholder: 'Optional — e.g. 2022' })}
-          {textField('ambulance_permit_number', 'Ambulance Permit Number', { required: true, placeholder: 'Permit number' })}
+          {textField('ambulance_permit_number', 'Ambulance Permit Number', { placeholder: 'Optional — permit number' })}
         </CardContent>
       </Card>
 
@@ -348,9 +404,9 @@ export default function DriverApplyPage() {
           {textField('license_number', 'Driving License Number', { required: true, placeholder: 'License number' })}
           {textField('license_expiry', 'License Expiry Date', { required: true, type: 'date' })}
           <div id="field-license_type" className="space-y-1.5">
-            <Label htmlFor="license_type" className="text-sm font-medium text-[#333333]">License Type<span className="ml-0.5 text-[#cc3333]">*</span></Label>
+            <Label htmlFor="license_type" className="text-sm font-medium text-[#333333]">License Type</Label>
             <Select value={form.license_type} onValueChange={(v) => set('license_type', v)}>
-              <SelectTrigger id="license_type" className={errors.license_type ? 'border-[#cc3333]' : ''}><SelectValue placeholder="Select type" /></SelectTrigger>
+              <SelectTrigger id="license_type" className={errors.license_type ? 'border-[#cc3333]' : ''}><SelectValue placeholder="Optional — select type" /></SelectTrigger>
               <SelectContent>
                 {LICENSE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
@@ -391,6 +447,22 @@ export default function DriverApplyPage() {
         </CardContent>
       </Card>
 
+      {/* Step 1 → Step 2 */}
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          onClick={handleNext}
+          className="w-full bg-[#003366] text-white hover:bg-[#002952] sm:w-auto"
+        >
+          Next: Documents
+          <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
+      </>
+      )}
+
+      {step === 'documents' && (
+      <>
       {/* 5 · Documents */}
       <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
         <CardHeader>
@@ -400,7 +472,7 @@ export default function DriverApplyPage() {
             </span>
             <span className="font-semibold text-slate-900">Document upload</span>
           </CardTitle>
-          <p className="mt-1 text-xs text-[#666666]">All documents are mandatory. Max 10 MB per file.</p>
+          <p className="mt-1 text-xs text-[#666666]">All documents are optional for now. Max 10 MB per file.</p>
         </CardHeader>
         <CardContent className="space-y-3">
           {DOCUMENT_TYPES.map((def) => (
@@ -411,6 +483,7 @@ export default function DriverApplyPage() {
                 onAdd={(files) => uploads.addFiles(def.key, files)}
                 onRemove={(id) => uploads.removeFile(def.key, id)}
                 onRetry={(id) => uploads.retryFile(def.key, id)}
+                required={REQUIRED_DOCUMENT_KEYS.includes(def.key)}
                 invalid={submitAttempted && uploads.missingRequired.includes(def.key)}
               />
             </div>
@@ -418,20 +491,34 @@ export default function DriverApplyPage() {
         </CardContent>
       </Card>
 
-      {/* Submit */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-        {uploads.isUploading && (
-          <span className="text-sm text-[#666666]">Uploading documents…</span>
-        )}
+      {/* Back + Submit */}
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Button
-          type="submit"
-          disabled={submitting || uploads.isUploading}
-          className="w-full bg-[#cc3333] text-white hover:bg-[#b32d2d] sm:w-auto"
+          type="button"
+          variant="outline"
+          onClick={goBack}
+          disabled={submitting}
+          className="w-full sm:w-auto"
         >
-          {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Submit Application
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
         </Button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          {uploads.isUploading && (
+            <span className="text-sm text-[#666666]">Uploading documents…</span>
+          )}
+          <Button
+            type="submit"
+            disabled={submitting || uploads.isUploading}
+            className="w-full bg-[#cc3333] text-white hover:bg-[#b32d2d] sm:w-auto"
+          >
+            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Submit Application
+          </Button>
+        </div>
       </div>
+      </>
+      )}
     </form>
     </div>
   )
