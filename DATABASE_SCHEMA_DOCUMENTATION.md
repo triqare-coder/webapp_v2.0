@@ -299,25 +299,49 @@ CREATE TABLE public.pincodes (
 ### 10. **sos_requests** (Emergency Requests)
 Core table for tracking emergency SOS requests.
 
+> ⚠️ **CORRECTED to match the live database.** The driver is stored **inline** on this
+> row (denormalized `driver_id/driver_name/driver_phone`) — `sos_request_assigned` is a
+> deprecated junction kept only for back-compat. There is **no `created_at`/`updated_at`**
+> on this table, and **no `destination_hospital_id`**. PostgREST nested embeds against this
+> table fail (FK relationships are not in the schema cache) — query scalar columns and merge.
+
 ```sql
 CREATE TABLE public.sos_requests (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    patient_id UUID NOT NULL REFERENCES patients(user_id),
+    patient_id UUID NOT NULL REFERENCES patients(user_id) ON DELETE CASCADE,
     requested_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     assigned_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
     auto_assigned BOOLEAN DEFAULT false,
-    status VARCHAR(50) NOT NULL CHECK (status IN (
-        'SOS Triggered',
-        'Driver Assigned',
-        'Driver En Route',
-        'Patient Picked Up',
-        'At Hospital',
-        'Completed',
-        'Cancelled',
-        'Transferred'
-    )) DEFAULT 'SOS Triggered'
+    -- Location of the emergency
+    location_lat DECIMAL,
+    location_lon DECIMAL,
+    -- Denormalized patient identity (avoids fragile joins)
+    patient_name TEXT,
+    patient_phone TEXT,
+    -- Inline (canonical) driver assignment
+    driver_id UUID,           -- references the driver's users.id
+    driver_name TEXT,
+    driver_phone TEXT,
+    -- Append-only JSON string: [{ "status": "...", "timestamp": "..." }]
+    status_history TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'SOS Triggered' CHECK (status IN (
+        'SOS Triggered',        -- request created, awaiting driver
+        'Driver En Route',      -- driver assigned and travelling
+        'Transport Arrived',    -- driver at patient location
+        'User Picked Up',       -- patient in the vehicle
+        'Arrived at Hospital',  -- trip complete (sets completed_at)
+        'Cancelled'             -- cancelled at any stage (driver released)
+    ))
 );
+```
+
+**Canonical status workflow** (enforced by `migrations/99_updates/update_sos_status_workflow.sql`,
+normalized in code by `src/lib/sosStatus.ts`):
+
+```
+SOS Triggered → Driver En Route → Transport Arrived → User Picked Up → Arrived at Hospital
+                                                                    ↘ Cancelled (any stage)
 ```
 
 **SOS Status Lifecycle:**

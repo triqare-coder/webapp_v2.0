@@ -24,24 +24,22 @@ export async function POST(
       )
     }
 
-    if (!body.assigned_by) {
-      return NextResponse.json(
-        { error: 'Assigned by user ID is required' },
-        { status: 400 }
-      )
-    }
-
-    const result = await SOSRequestService.assignDriver(id, body.driver_id)
+    const result = await SOSRequestService.assignDriver(id, body.driver_id, {
+      autoAssigned: body.auto_assigned ?? false,
+    })
 
     return NextResponse.json({
+      success: true,
       sos_request: result,
       message: 'Driver assigned successfully'
     })
   } catch (error) {
-    console.error('Error in POST /api/sos-requests/[id]/assign:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    const status =
+      message.includes('not found') ? 404 :
+      message.includes('already assigned') || message.includes('completed or cancelled') ? 400 :
+      500
+    console.error('Error in POST /api/sos-requests/[id]/assign:', message)
+    return NextResponse.json({ error: message }, { status })
   }
 }

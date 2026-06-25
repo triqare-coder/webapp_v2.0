@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "seed:test": "node scripts/seed-and-test.js",
+    "test:scenarios": "node scripts/multi-scenario-test.js"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.32.0",

@@ -45,29 +45,38 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get currently assigned drivers to filter them out if status is 'available'
+    // Determine which drivers are currently busy, using BOTH the canonical inline model
+    // (sos_requests.driver_id on an active request, plus the drivers table status) and the
+    // legacy junction table — so a driver busy under either model is excluded.
     let assignedDriverIds: string[] = []
     if (status === 'available') {
-      // Get all assignments and check if the associated SOS requests are still active
+      const busy = new Set<string>()
+
+      // 1. Active inline assignments on sos_requests.
+      const { data: inlineActive } = await supabase
+        .from('sos_requests')
+        .select('driver_id, status')
+        .not('driver_id', 'is', null)
+        .not('status', 'in', '("Arrived at Hospital","Cancelled")')
+      inlineActive?.forEach(r => r.driver_id && busy.add(r.driver_id))
+
+      // 2. drivers table marked unavailable (on_trip / assigned / inactive).
+      const { data: busyDriverRows } = await supabase
+        .from('drivers')
+        .select('user_id, status')
+        .neq('status', 'available')
+      busyDriverRows?.forEach(d => d.user_id && busy.add(d.user_id))
+
+      // 3. Legacy junction assignments tied to still-active requests.
       const { data: assignments } = await supabase
         .from('sos_request_assigned')
-        .select(`
-          driver_id,
-          sos_requests!inner (
-            id,
-            status
-          )
-        `)
+        .select('driver_id, sos_requests!inner ( id, status )')
+      assignments?.forEach(a => {
+        const sos = (a as any).sos_requests
+        if (sos && sos.status !== 'Arrived at Hospital' && sos.status !== 'Cancelled') busy.add((a as any).driver_id)
+      })
 
-      if (assignments && assignments.length > 0) {
-        // Filter assignments where SOS request is not completed or cancelled
-        assignedDriverIds = assignments
-          .filter(assignment => {
-            const sosRequest = assignment.sos_requests as any
-            return sosRequest.status !== 'Arrived at Hospital' && sosRequest.status !== 'Cancelled'
-          })
-          .map(assignment => assignment.driver_id)
-      }
+      assignedDriverIds = Array.from(busy)
     }
 
     // Filter out assigned drivers if looking for available ones
