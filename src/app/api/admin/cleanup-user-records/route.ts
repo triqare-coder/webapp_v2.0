@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
+// SECURITY: destructive cleanup tooling that drops/deletes live user_records
+// artifacts. Admin-only.
 export async function POST(request: NextRequest) {
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
   try {
     console.log('🧹 Cleaning up user_records table and related artifacts...')
 

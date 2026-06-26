@@ -27,8 +27,13 @@ export async function GET(request: NextRequest) {
       `, { count: 'exact' })
 
     // Search on the denormalized columns we control (patient name/phone + status).
+    // Strip PostgREST-reserved characters (, . ( ) : *) from the raw input so the term
+    // cannot inject extra OR predicates or break the query.
     if (search) {
-      query = query.or(`patient_name.ilike.%${search}%,patient_phone.ilike.%${search}%,status.ilike.%${search}%`)
+      const safeSearch = search.replace(/[,.()*:%\\]/g, '').slice(0, 100)
+      if (safeSearch) {
+        query = query.or(`patient_name.ilike.%${safeSearch}%,patient_phone.ilike.%${safeSearch}%,status.ilike.%${safeSearch}%`)
+      }
     }
 
     if (status && status !== 'all') {

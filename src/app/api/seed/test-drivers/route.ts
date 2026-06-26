@@ -32,6 +32,10 @@ const lastNames = [
 const statuses = ['available', 'assigned', 'on_trip', 'available', 'available'] // More available
 
 export async function POST() {
+  // Seeds test driver rows into the live DB — never reachable in production.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Disabled in production' }, { status: 403 })
+  }
   try {
     const results = { created: 0, errors: [] as string[] }
 

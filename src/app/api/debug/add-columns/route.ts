@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
+  // Schema-bootstrap tooling that mutates the live users table — never reachable in production.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Disabled in production' }, { status: 403 })
+  }
   try {
     console.log('Adding missing profile columns to users table...')
 

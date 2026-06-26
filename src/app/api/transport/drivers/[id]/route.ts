@@ -12,7 +12,9 @@ export async function GET(
     const { id } = await params
     const driverId = id
     const { searchParams } = new URL(request.url)
-    const testMode = searchParams.get('test') === 'true'
+    // SECURITY: the ?test=true bypass (unauthenticated, hard-coded transport.test@example.com)
+    // must NEVER be honored in production — it would expose/mutate real data unauthenticated.
+    const testMode = process.env.NODE_ENV !== 'production' && searchParams.get('test') === 'true'
     
     let currentUser: any = null
     
@@ -100,7 +102,9 @@ export async function DELETE(
     const { id } = await params
     const driverId = id
     const { searchParams } = new URL(request.url)
-    const testMode = searchParams.get('test') === 'true'
+    // SECURITY: the ?test=true bypass (unauthenticated, hard-coded transport.test@example.com)
+    // must NEVER be honored in production — it would expose/mutate real data unauthenticated.
+    const testMode = process.env.NODE_ENV !== 'production' && searchParams.get('test') === 'true'
     
     let currentUser: any = null
     
@@ -186,7 +190,9 @@ export async function PUT(
     const { id } = await params
     const driverId = id
     const { searchParams } = new URL(request.url)
-    const testMode = searchParams.get('test') === 'true'
+    // SECURITY: the ?test=true bypass (unauthenticated, hard-coded transport.test@example.com)
+    // must NEVER be honored in production — it would expose/mutate real data unauthenticated.
+    const testMode = process.env.NODE_ENV !== 'production' && searchParams.get('test') === 'true'
 
     let currentUser: any = null
 

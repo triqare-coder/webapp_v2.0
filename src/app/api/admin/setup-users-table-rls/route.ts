@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
+// SECURITY: alters RLS policies on the live users table. Admin-only.
 export async function POST(request: NextRequest) {
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
   try {
     console.log('🔧 Setting up RLS policies for users table...')
 

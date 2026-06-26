@@ -28,47 +28,15 @@ export async function GET() {
         console.log('User found in mock store')
         user = mockUser
       } else {
-        console.log('User not found in mock store either, returning default mock user...')
-
-        // Return a default mock user object that matches the expected structure
-        user = {
-          id: userId, // Use Clerk user ID as fallback
-          clerk_user_id: userId,
-          email: 'admin@emergency.com',
-          first_name: 'System',
-          last_name: 'Administrator',
-          full_name: 'System Administrator',
-          role: 'admin',
-          phone: null,
-          bio: null,
-          avatar_url: null,
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          last_sign_in_at: null,
-          created_by: null,
-          date_of_birth: null,
-          gender: null,
-          address: null,
-          city: null,
-          state: null,
-          zip_code: null,
-          country: null,
-          emergency_contact_name: null,
-          emergency_contact_phone: null,
-          emergency_contact_relationship: null,
-          medical_conditions: null,
-          allergies: null,
-          medications: null,
-          blood_type: null,
-          department: 'Emergency Management',
-          position: null,
-          employee_id: null,
-          transport_company_id: null,
-          notification_preferences: null,
-          language_preference: null,
-          timezone: null
-        } as any
+        // SECURITY: do NOT fabricate a default admin profile here. Previously this
+        // returned role:'admin' for any authenticated user not yet synced to the DB,
+        // which let brand-new self-signed-up accounts be treated as administrators.
+        // An authenticated user with no DB record is in an onboarding-required state.
+        console.log('Authenticated user has no DB/mock record — onboarding required')
+        return NextResponse.json(
+          { error: 'Profile not found', code: 'onboarding_required' },
+          { status: 404 }
+        )
       }
     } else if (error) {
       console.error('Error fetching user profile:', error)
@@ -110,47 +78,14 @@ export async function PUT(request: NextRequest) {
         console.log('User found in mock store for update')
         currentUser = mockUser
       } else {
-        console.log('User not found in mock store either, using default mock user for update...')
-
-        // Create a default mock user object for the update operation
-        currentUser = {
-          id: userId, // Use Clerk user ID as fallback
-          clerk_user_id: userId,
-          email: 'admin@emergency.com',
-          first_name: 'System',
-          last_name: 'Administrator',
-          full_name: 'System Administrator',
-          role: 'admin',
-          phone: null,
-          bio: null,
-          avatar_url: null,
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          last_sign_in_at: null,
-          created_by: null,
-          date_of_birth: null,
-          gender: null,
-          address: null,
-          city: null,
-          state: null,
-          zip_code: null,
-          country: null,
-          emergency_contact_name: null,
-          emergency_contact_phone: null,
-          emergency_contact_relationship: null,
-          medical_conditions: null,
-          allergies: null,
-          medications: null,
-          blood_type: null,
-          department: 'Emergency Management',
-          position: null,
-          employee_id: null,
-          transport_company_id: null,
-          notification_preferences: null,
-          language_preference: null,
-          timezone: null
-        } as any
+        // SECURITY: do NOT fabricate a default admin profile (see GET handler).
+        // An authenticated user with no DB record cannot update a profile that
+        // does not exist; treat as onboarding-required.
+        console.log('Authenticated user has no DB/mock record — onboarding required')
+        return NextResponse.json(
+          { error: 'Profile not found', code: 'onboarding_required' },
+          { status: 404 }
+        )
       }
     } else if (fetchError || !currentUser) {
       console.error('Error fetching current user:', fetchError)

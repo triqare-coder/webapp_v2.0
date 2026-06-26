@@ -91,16 +91,12 @@ export default function DataExportPage() {
   ]
 
   const handleExport = async () => {
-    setLoading(true)
-    
-    // Simulate export process
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    console.log('Exporting data:', exportConfig)
-    setLoading(false)
-    
-    // In a real app, this would trigger the actual export
-    alert(`Export completed! ${exportConfig.dataType} data has been exported as ${exportConfig.format.toUpperCase()}.`)
+    // The export backend is not wired up yet. Previously this faked a 2s delay
+    // and then alerted "Export completed!" even though no file was ever
+    // generated or downloaded, misleading the admin. Until a real export
+    // endpoint exists, do NOT report a successful export.
+    console.log('Export requested (not connected to backend):', exportConfig)
+    alert('Data export is not available yet. No file was generated. This feature is coming soon.')
   }
 
   const handleFieldToggle = (field: string) => {
@@ -363,7 +359,13 @@ export default function DataExportPage() {
                         <div>Size: {export_item.size}</div>
                         <div>Records: {export_item.records.toLocaleString()}</div>
                       </div>
-                      <Button variant="outline" size="sm" className="w-full mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2"
+                        disabled
+                        title="Download is not available yet"
+                      >
                         <Download className="h-3 w-3 mr-1" />
                         Download
                       </Button>

@@ -133,10 +133,11 @@ export default function TransportCompanyRegistration() {
         }
       })
 
-      // Send verification email
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
-
-      // Create database records via API
+      // Create database records via API BEFORE sending the verification email.
+      // This ordering ensures we never send the "you're registered" email (or claim
+      // success) when the DB write failed: a failure here aborts the flow, so the
+      // user can simply retry — the Clerk sign-up attempt is still pending and the
+      // unverified email is not permanently locked.
       const response = await fetch('/api/register/transport-company', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -146,10 +147,27 @@ export default function TransportCompanyRegistration() {
         }),
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to create transport company record')
+      // Defense-in-depth: the request can be silently redirected to the sign-in
+      // page (no active session yet), which returns 200 HTML and would otherwise
+      // look like a success. Require a real JSON success payload before proceeding
+      // so we never claim the DB record was created when it was not.
+      if (response.redirected || !response.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('Failed to create transport company record. Please try again or contact support.')
       }
+
+      let resultJson: { success?: boolean; error?: string } = {}
+      try {
+        resultJson = await response.json()
+      } catch {
+        throw new Error('Failed to create transport company record. Please try again or contact support.')
+      }
+
+      if (!response.ok || resultJson.success !== true) {
+        throw new Error(resultJson.error || 'Failed to create transport company record')
+      }
+
+      // DB record confirmed created — now send the verification email.
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
 
       toast.success('Registration successful! Please check your email to verify your account.')
       router.push(`/verify-email?email=${encodeURIComponent(formData.email)}`)

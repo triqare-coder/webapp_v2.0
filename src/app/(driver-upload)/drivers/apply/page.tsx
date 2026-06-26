@@ -187,6 +187,18 @@ export default function DriverApplyPage() {
       setTopError('Please wait for all uploads to finish.')
       return
     }
+    // Block on any document still in the 'error' state. doSubmit only sends
+    // 'done' files (getDraftPaths), so an un-retried failed upload would
+    // otherwise be silently dropped while the user sees the success screen.
+    // Computed locally from the already-exposed docs state (no hook change).
+    const erroredKey = DOCUMENT_TYPES.find(
+      (def) => (uploads.docs[def.key] ?? []).some((f) => f.status === 'error'),
+    )?.key
+    if (erroredKey) {
+      setTopError('Some documents failed to upload. Please retry or remove them before submitting.')
+      scrollToId(`doc-${erroredKey}`)
+      return
+    }
     if (uploads.missingRequired.length) {
       setTopError('Please upload all required documents')
       scrollToId(`doc-${uploads.missingRequired[0]}`)
@@ -210,7 +222,7 @@ export default function DriverApplyPage() {
           <p className="mt-1 text-lg font-bold text-[#003366]">{referenceNumber}</p>
         </div>
         <Button asChild className="bg-[#cc3333] text-white hover:bg-[#b32d2d]">
-          <a href="https://triqare.in">Return to Homepage</a>
+          <Link href="/">Return to Homepage</Link>
         </Button>
       </div>
     )

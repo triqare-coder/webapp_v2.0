@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Loader2, Users, CheckCircle, AlertTriangle, Clock } from 'lucide-react'
 import { RoleGuard } from '@/components/auth/RoleGuard'
+import { isActiveStatus, normalizeSOSStatus } from '@/lib/sosStatus'
 import { toast } from 'sonner'
 
 export default function AssignmentsPage() {
@@ -63,10 +64,11 @@ export default function AssignmentsPage() {
             const matchesDriverId = request.driver_id === driver.user_id
             // Match by current_request_id in drivers table
             const matchesCurrentRequest = driver.current_request_id && request.id === driver.current_request_id
-            // Only consider active requests
-            const isActiveRequest = request.status !== 'completed' &&
-                                  request.status !== 'cancelled' &&
-                                  request.status !== 'resolved'
+            // Only consider active requests. The SOS status vocabulary is the
+            // canonical mixed-case set ('SOS Triggered', 'Driver En Route', ...,
+            // 'Arrived at Hospital', 'Cancelled'); normalize so legacy lowercase
+            // values are handled too, then treat terminal states as inactive.
+            const isActiveRequest = isActiveStatus(normalizeSOSStatus(request.status))
 
             return (matchesDriverId || matchesCurrentRequest) && isActiveRequest
           })

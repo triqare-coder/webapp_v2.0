@@ -8,7 +8,9 @@ export async function GET(request: NextRequest) {
   try {
     // Parse query parameters first
     const { searchParams } = new URL(request.url)
-    const testMode = searchParams.get('test') === 'true'
+    // SECURITY: the ?test=true bypass (unauthenticated, hard-coded transport.test@example.com)
+    // must NEVER be honored in production — it would expose real data unauthenticated.
+    const testMode = process.env.NODE_ENV !== 'production' && searchParams.get('test') === 'true'
 
     let currentUser: any = null
 

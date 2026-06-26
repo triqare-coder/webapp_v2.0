@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
 
+// Canonical "completed" SOS state (an SOS reaching the hospital). Legacy 'completed'
+// does not exist in the live sos_requests status enum.
+const COMPLETED_STATUS = 'Arrived at Hospital'
+
 export async function GET(request: NextRequest) {
   try {
     const { userId: clerkUserId } = await auth()
@@ -92,14 +96,15 @@ export async function GET(request: NextRequest) {
 
     const driverIds = companyDrivers?.map(d => d.user_id) || []
 
-    // Get active assignments (SOS requests assigned to this company's drivers)
+    // Get active assignments (SOS requests assigned to this company's drivers).
+    // Canonical inline model: sos_requests.driver_id; active = not in a terminal state.
     let activeAssignments = 0
     if (driverIds.length > 0) {
       const { count } = await supabase
         .from('sos_requests')
         .select('*', { count: 'exact', head: true })
-        .in('assigned_driver_id', driverIds)
-        .in('status', ['pending', 'driver_assigned', 'in_progress', 'driver_on_the_way'])
+        .in('driver_id', driverIds)
+        .not('status', 'in', '("Arrived at Hospital","Cancelled")')
       activeAssignments = count || 0
     }
 
@@ -114,8 +119,8 @@ export async function GET(request: NextRequest) {
       const { count } = await supabase
         .from('sos_requests')
         .select('*', { count: 'exact', head: true })
-        .in('assigned_driver_id', driverIds)
-        .eq('status', 'completed')
+        .in('driver_id', driverIds)
+        .eq('status', COMPLETED_STATUS)
         .gte('completed_at', today.toISOString())
         .lt('completed_at', tomorrow.toISOString())
       completedToday = count || 0
@@ -128,8 +133,8 @@ export async function GET(request: NextRequest) {
       const { count } = await supabase
         .from('sos_requests')
         .select('*', { count: 'exact', head: true })
-        .in('assigned_driver_id', driverIds)
-        .eq('status', 'completed')
+        .in('driver_id', driverIds)
+        .eq('status', COMPLETED_STATUS)
         .gte('completed_at', firstDayOfMonth.toISOString())
       completedThisMonth = count || 0
     }
@@ -140,8 +145,8 @@ export async function GET(request: NextRequest) {
       const { data: completedSOS } = await supabase
         .from('sos_requests')
         .select('requested_at, assigned_at')
-        .in('assigned_driver_id', driverIds)
-        .eq('status', 'completed')
+        .in('driver_id', driverIds)
+        .eq('status', COMPLETED_STATUS)
         .not('assigned_at', 'is', null)
         .order('requested_at', { ascending: false })
         .limit(50)
@@ -158,24 +163,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get recent driver activity
+    // Get recent driver activity. NOTE: avoid PostgREST nested embeds (FK relationships
+    // are not in this DB's schema cache → embeds 500); fetch driver rows then batch-fetch
+    // user identities and merge in JS. Order by updated_at (the real column).
     const { data: recentDrivers } = await supabase
       .from('drivers')
-      .select(`
-        user_id,
-        license_number,
-        status,
-        last_updated_at,
-        users!drivers_user_id_fkey (
-          id,
-          full_name,
-          email,
-          phone
-        )
-      `)
+      .select('user_id, license_number, status, updated_at')
       .eq('transport_company_id', transportCompany.user_id)
-      .order('last_updated_at', { ascending: false })
+      .order('updated_at', { ascending: false })
       .limit(5)
+
+    const recentDriverUserIds = [...new Set((recentDrivers || []).map(d => d.user_id).filter(Boolean))]
+    const { data: recentDriverUsers } = recentDriverUserIds.length > 0
+      ? await supabase.from('users').select('id, full_name, email, phone').in('id', recentDriverUserIds)
+      : { data: [] as any[] }
+    const recentDriverUserById = Object.fromEntries((recentDriverUsers || []).map((u: any) => [u.id, u]))
 
     // Calculate performance metrics
     const totalTrips = completedThisMonth || 0
@@ -197,9 +199,9 @@ export async function GET(request: NextRequest) {
       },
       recentActivity: (recentDrivers || []).map((driver: any) => ({
         id: driver.user_id,
-        driver_name: driver.users?.full_name || 'Unknown',
+        driver_name: recentDriverUserById[driver.user_id]?.full_name || 'Unknown',
         action: `Status: ${driver.status}`,
-        timestamp: driver.last_updated_at
+        timestamp: driver.updated_at
       }))
     }
 

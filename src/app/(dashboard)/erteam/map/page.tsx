@@ -303,9 +303,9 @@ export default function ERTMapPage() {
                             🏢 {driver.transport_company.company_name}
                           </div>
                         )}
-                        {driver.latitude && driver.longitude && (
+                        {Number.isFinite(driver.latitude) && Number.isFinite(driver.longitude) && (
                           <div className="text-xs text-gray-400">
-                            📍 {driver.latitude.toFixed(4)}, {driver.longitude.toFixed(4)}
+                            📍 {Number(driver.latitude).toFixed(4)}, {Number(driver.longitude).toFixed(4)}
                           </div>
                         )}
                       </div>
@@ -341,9 +341,9 @@ export default function ERTMapPage() {
                             🏢 {driver.transport_company.company_name}
                           </div>
                         )}
-                        {driver.latitude && driver.longitude && (
+                        {Number.isFinite(driver.latitude) && Number.isFinite(driver.longitude) && (
                           <div className="text-xs text-gray-400">
-                            📍 {driver.latitude.toFixed(4)}, {driver.longitude.toFixed(4)}
+                            📍 {Number(driver.latitude).toFixed(4)}, {Number(driver.longitude).toFixed(4)}
                           </div>
                         )}
                       </div>
@@ -375,9 +375,13 @@ export default function ERTMapPage() {
                             {hospital.phone}
                           </div>
                         )}
-                        <div className="text-xs text-gray-400">
-                          📍 {parseFloat(String(hospital.latitude)).toFixed(4)}, {parseFloat(String(hospital.longitude)).toFixed(4)}
-                        </div>
+                        {Number.isFinite(Number(hospital.latitude)) && Number.isFinite(Number(hospital.longitude)) ? (
+                          <div className="text-xs text-gray-400">
+                            📍 {Number(hospital.latitude).toFixed(4)}, {Number(hospital.longitude).toFixed(4)}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-400">📍 Location unavailable</div>
+                        )}
                       </div>
                     ))
                   )}

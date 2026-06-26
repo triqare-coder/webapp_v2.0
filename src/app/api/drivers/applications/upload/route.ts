@@ -6,10 +6,27 @@ import {
   MAX_FILE_BYTES,
   FILE_TOO_LARGE_MESSAGE,
   draftObjectPath,
+  fileExtension,
   isValidDocumentType,
 } from '@/lib/storage/driverDocuments'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Allowlist of file extensions a KYC document may use. Deliberately excludes
+ * active/markup types (svg, html, htm, xml, js, etc.) that a private bucket
+ * could later serve back and execute as stored XSS, plus anything unexpected
+ * for scanned documents/photos.
+ */
+const ALLOWED_DOC_EXTENSIONS = new Set([
+  'pdf',
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'heic',
+  'heif',
+])
 
 // POST /api/drivers/applications/upload  (PUBLIC)
 // Mints a Supabase signed upload URL for one KYC document into the draft prefix.
@@ -41,6 +58,14 @@ export async function POST(request: NextRequest) {
     }
     if (!fileName || typeof fileName !== 'string') {
       return NextResponse.json({ error: 'Missing file name' }, { status: 400 })
+    }
+    // Reject markup/active and otherwise-unexpected file types up front, so a
+    // signed upload URL is never issued for an svg/html payload (stored XSS).
+    if (!ALLOWED_DOC_EXTENSIONS.has(fileExtension(fileName))) {
+      return NextResponse.json(
+        { error: 'Unsupported file type. Please upload a PDF or image (JPG, PNG, WEBP, HEIC).' },
+        { status: 415 },
+      )
     }
     if (typeof size !== 'number' || size <= 0) {
       return NextResponse.json({ error: 'Missing or invalid file size' }, { status: 400 })

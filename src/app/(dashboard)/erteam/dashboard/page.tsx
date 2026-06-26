@@ -428,7 +428,11 @@ export default function ERTDashboardPage() {
                     </div>
                     <div className="flex space-x-2 mt-3">
                       {!emergency.assigned_driver_id && (
-                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                        <Button
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700"
+                          onClick={() => router.push('/erteam/sos')}
+                        >
                           <Phone className="h-4 w-4 mr-1" />
                           Assign Driver
                         </Button>
@@ -441,7 +445,11 @@ export default function ERTDashboardPage() {
                         <Activity className="h-4 w-4 mr-1" />
                         View Details
                       </Button>
-                      <Button size="sm" variant="outline">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => router.push('/erteam/map')}
+                      >
                         <MapPin className="h-4 w-4 mr-1" />
                         View on Map
                       </Button>
@@ -470,15 +478,28 @@ export default function ERTDashboardPage() {
                 <AlertTriangle className="h-6 w-6 mb-2 text-red-600" />
                 Create SOS Alert
               </Button>
-              <Button variant="outline" className="h-20 flex-col">
+              <Button
+                variant="outline"
+                className="h-20 flex-col"
+                onClick={() => router.push('/erteam/map')}
+              >
                 <MapPin className="h-6 w-6 mb-2" />
                 Live Map View
               </Button>
-              <Button variant="outline" className="h-20 flex-col">
+              <Button
+                variant="outline"
+                className="h-20 flex-col"
+                onClick={() => router.push('/erteam/assignments')}
+              >
                 <Phone className="h-6 w-6 mb-2" />
                 Dispatch Center
               </Button>
-              <Button variant="outline" className="h-20 flex-col">
+              <Button
+                variant="outline"
+                className="h-20 flex-col"
+                disabled
+                title="Route optimization is not yet available"
+              >
                 <Navigation className="h-6 w-6 mb-2" />
                 Route Optimization
               </Button>

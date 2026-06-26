@@ -63,7 +63,7 @@ export async function PUT(
     const currentUser = await clerkClient.users.getUser(currentUserId)
     const currentUserRole = currentUser.publicMetadata?.role as UserRole
 
-    // Allow self-assignment if user has no role and is updating their own account
+    // Allow self-assignment ONLY for a role-less user updating their own account.
     const isSelfAssignment = currentUserId === userId && !currentUserRole
 
     if (!isSelfAssignment && currentUserRole !== 'admin') {
@@ -76,9 +76,21 @@ export async function PUT(
     // Validate role
     const validRoles: UserRole[] = ['admin', 'ert', 'transport_company', 'patient', 'driver']
     if (!role || !validRoles.includes(role)) {
-      return NextResponse.json({ 
-        error: 'Invalid role. Must be one of: ' + validRoles.join(', ') 
+      return NextResponse.json({
+        error: 'Invalid role. Must be one of: ' + validRoles.join(', ')
       }, { status: 400 })
+    }
+
+    // SECURITY: privilege-escalation guard. A role-less user self-assigning may ONLY
+    // claim the non-privileged 'patient' role. All privileged roles (admin, ert,
+    // transport_company, driver) require an existing admin to grant them — otherwise any
+    // account created before the Clerk webhook sets a default role could escalate itself.
+    const SELF_ASSIGNABLE_ROLES: UserRole[] = ['patient']
+    if (isSelfAssignment && currentUserRole !== 'admin' && !SELF_ASSIGNABLE_ROLES.includes(role)) {
+      return NextResponse.json(
+        { error: 'Forbidden - self-assignment is limited to the patient role; privileged roles require an administrator' },
+        { status: 403 }
+      )
     }
 
     // Update user role in Clerk metadata

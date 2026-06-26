@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SyncService } from '@/services/syncService'
 import { supabase } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
-// API endpoint to migrate direct auth users to Clerk
+// API endpoint to migrate direct auth users to Clerk (ADMIN ONLY).
+// This privileged bootstrap/migration action was previously reachable unauthenticated;
+// it now requires an admin session (defense-in-depth at the handler level).
 export async function POST(req: NextRequest) {
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
   try {
     console.log('🚀 Starting user migration from direct auth to Clerk...')
 
@@ -39,8 +44,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Get migration status
+// Get migration status (ADMIN ONLY)
 export async function GET(req: NextRequest) {
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
   try {
     // Check for users that need migration
     const { data: directAuthUsers, error } = await supabase

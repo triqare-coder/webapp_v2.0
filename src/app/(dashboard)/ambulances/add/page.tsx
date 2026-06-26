@@ -50,25 +50,12 @@ export default function AddAmbulancePage() {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // Show success message
-    toast.success('Ambulance added successfully!', {
-      description: `${formData.vehicleNumber} has been added to the fleet.`
+    // This form is not yet connected to the ambulance-creation backend. Do NOT
+    // report a fabricated success — a phantom ambulance in the fleet is a
+    // safety-relevant data-integrity lie. Surface an honest message instead.
+    toast.error('Saving is not available yet', {
+      description: 'This form is not connected to the backend, so no ambulance was added to the fleet.'
     })
-
-    // Reset form
-    setFormData({
-      vehicleNumber: '',
-      type: '',
-      status: 'available',
-      transportCompanyId: '',
-      driverId: '',
-      latitude: '',
-      longitude: ''
-    })
-    setEquipment(['First Aid Kit', 'Oxygen Tank', 'Stretcher'])
 
     setIsSubmitting(false)
   }

@@ -4,6 +4,10 @@ import { TransportCompanyService } from '@/services/transportCompanyService'
 import { supabase } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
+  // Test tooling that writes live driver/user rows — never reachable in production.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Disabled in production' }, { status: 403 })
+  }
   try {
     const formData = await request.json()
     

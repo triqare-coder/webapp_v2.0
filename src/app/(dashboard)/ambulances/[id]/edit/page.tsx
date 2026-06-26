@@ -74,16 +74,15 @@ export default function EditAmbulancePage({ params }: EditAmbulancePageProps) {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // Show success message
-    toast.success('Ambulance updated successfully!', {
-      description: `${formData.vehicleNumber} information has been updated.`
+    // This form is not yet connected to the ambulance-update backend. Do NOT report
+    // a fabricated success or navigate away as if the change was saved — that would
+    // make a reviewer believe the ambulance record was updated when nothing was
+    // persisted. Surface an honest message and keep the user on the form instead.
+    toast.error('Saving is not available yet', {
+      description: 'This form is not connected to the backend, so no changes were saved.'
     })
 
     setIsSubmitting(false)
-    router.push(`/ambulances/${params.id}`)
   }
 
   const availableDrivers = mockDrivers.filter(d => 

@@ -92,6 +92,50 @@
 \i 03_seed/02_subscription_plans.sql
 
 -- =============================================
+-- STEP 10: NOTIFICATIONS TABLE
+-- =============================================
+
+\echo ''
+\echo 'Step 10: Creating Notifications table + policies...'
+\i 03_notifications/01_notifications_table.sql
+
+-- =============================================
+-- STEP 11: SEED DATA - REFERENCE DATA (countries/states/cities/pincodes/hospitals)
+-- =============================================
+
+\echo ''
+\echo 'Step 11: Seeding reference data...'
+\i 04_seed/seed_countries.sql
+\i 04_seed/seed_states.sql
+\i 04_seed/seed_cities.sql
+\i 04_seed/seed_pincodes.sql
+\i 04_seed/seed_hospitals.sql
+\i 04_seed/seed_configurations.sql
+
+-- =============================================
+-- STEP 12: INCREMENTAL UPDATES (99_updates)
+-- =============================================
+-- These patches must be applied on every fresh deploy or the schema drifts from
+-- what the app reads/writes. Order matters where one patch depends on another.
+
+\echo ''
+\echo 'Step 12: Applying incremental updates...'
+-- Canonical SOS status workflow (replaces the original lowercase CHECK constraint).
+\i 99_updates/update_sos_status_workflow.sql
+-- Inline operational columns the app reads/writes on sos_requests.
+\i 99_updates/sos_requests_inline_columns.sql
+-- Transport dashboard enhancement (assignment-log columns + indexes).
+\i 99_updates/transport_dashboard_enhancement.sql
+-- Emergency contact email + photo columns.
+\i 99_updates/emergency_contact_email_and_photo.sql
+-- Driver application address bifurcation + relaxed mandatory fields.
+\i 99_updates/driver_application_address_and_optional_fields.sql
+-- Driver KYC document storage bucket.
+\i 99_updates/driver_documents_storage_bucket.sql
+-- users.onboarding_completed flag.
+\i 99_updates/add_users_onboarding_completed.sql
+
+-- =============================================
 -- DEPLOYMENT COMPLETE
 -- =============================================
 

@@ -11,7 +11,10 @@ export async function GET(request: NextRequest) {
 
     console.log('Fetching SOS assignments...')
 
-    // Fetch SOS requests with patient details - simplified query
+    // Fetch SOS requests with the canonical inline driver model. The assigned driver
+    // is denormalized on sos_requests (driver_id/driver_name/driver_phone) — the legacy
+    // sos_request_assigned junction is NOT used here (it has no status column and misses
+    // drivers assigned via the canonical dispatch flow).
     let query = supabase
       .from('sos_requests')
       .select(`
@@ -21,7 +24,10 @@ export async function GET(request: NextRequest) {
         assigned_at,
         completed_at,
         auto_assigned,
-        status
+        status,
+        driver_id,
+        driver_name,
+        driver_phone
       `)
       .order('requested_at', { ascending: false })
 
@@ -56,98 +62,67 @@ export async function GET(request: NextRequest) {
     const patientIds = assignments.map((a: any) => a.patient_id).filter(Boolean)
     console.log('Patient IDs:', patientIds)
 
-    // Fetch patient details
+    // Fetch patient details. NOTE: avoid PostgREST nested embeds (users(...) — FK not in
+    // schema cache → embeds 500); fetch patient profiles + their user identity separately
+    // and merge in JS.
     let patientsMap: Record<string, any> = {}
+    let patientUsersMap: Record<string, any> = {}
     if (patientIds.length > 0) {
-      const { data: patientsData, error: patientsError } = await supabase
-        .from('patients')
-        .select(`
-          user_id,
-          blood_group,
-          allergies,
-          emergency_contact_name,
-          emergency_contact_phone,
-          latitude,
-          longitude,
-          address_line,
-          users (
-            id,
-            full_name,
-            email,
-            phone
-          )
-        `)
-        .in('user_id', patientIds)
+      const [{ data: patientsData, error: patientsError }, { data: patientUsersData }] = await Promise.all([
+        supabase
+          .from('patients')
+          .select('user_id, blood_group, allergies, emergency_contact_name, emergency_contact_phone, latitude, longitude, address_line')
+          .in('user_id', patientIds),
+        supabase
+          .from('users')
+          .select('id, full_name, email, phone')
+          .in('id', patientIds),
+      ])
 
       console.log('Patients fetched:', patientsData?.length || 0, 'Error:', patientsError?.message || 'none')
 
       if (patientsData) {
-        patientsData.forEach((p: any) => {
-          patientsMap[p.user_id] = p
-        })
+        patientsData.forEach((p: any) => { patientsMap[p.user_id] = p })
+      }
+      if (patientUsersData) {
+        patientUsersData.forEach((u: any) => { patientUsersMap[u.id] = u })
       }
     }
 
-    // Fetch driver assignments
-    const sosIds = assignments.map((a: any) => a.id)
-    let assignmentsMap: Record<string, any> = {}
+    // Resolve assigned drivers from the canonical inline model (sos_requests.driver_id).
+    const driverIds = [...new Set(assignments.map((a: any) => a.driver_id).filter(Boolean))]
 
-    const { data: driverAssignments, error: assignError } = await supabase
-      .from('sos_request_assigned')
-      .select('id, sos_request_id, driver_id, assigned_at, status')
-      .in('sos_request_id', sosIds)
-
-    console.log('Driver assignments fetched:', driverAssignments?.length || 0, 'Error:', assignError?.message || 'none')
-
-    if (driverAssignments) {
-      driverAssignments.forEach((da: any) => {
-        if (!assignmentsMap[da.sos_request_id]) {
-          assignmentsMap[da.sos_request_id] = da
-        }
-      })
-    }
-
-    // Get all driver IDs from assignments
-    const driverIds = driverAssignments?.map((da: any) => da.driver_id).filter(Boolean) || []
-
-    // Fetch driver details if there are any assigned drivers
+    // Fetch driver profile details (license/vehicle/company) for assigned drivers. Embeds
+    // are broken DB-wide, so fetch drivers + their transport company separately and merge.
     let driversMap: Record<string, any> = {}
+    let companyNameById: Record<string, string> = {}
     if (driverIds.length > 0) {
       const { data: driversData, error: driversError } = await supabase
-        .from('users')
-        .select(`
-          id,
-          full_name,
-          email,
-          phone,
-          drivers (
-            license_number,
-            vehicle_number,
-            transport_company_id,
-            transport_companies (
-              company_name
-            )
-          )
-        `)
-        .in('id', driverIds)
+        .from('drivers')
+        .select('user_id, license_number, vehicle_number, transport_company_id')
+        .in('user_id', driverIds)
 
       console.log('Drivers fetched:', driversData?.length || 0, 'Error:', driversError?.message || 'none')
 
       if (driversData) {
-        driversData.forEach((d: any) => {
-          driversMap[d.id] = d
-        })
+        driversData.forEach((d: any) => { driversMap[d.user_id] = d })
+        const companyIds = [...new Set(driversData.map((d: any) => d.transport_company_id).filter(Boolean))]
+        if (companyIds.length > 0) {
+          const { data: companies } = await supabase
+            .from('transport_companies')
+            .select('user_id, company_name')
+            .in('user_id', companyIds)
+          companies?.forEach((c: any) => { companyNameById[c.user_id] = c.company_name })
+        }
       }
     }
 
     // Transform data for frontend
     const transformedAssignments = assignments.map((assignment: any) => {
       const patient = patientsMap[assignment.patient_id]
-      const patientUser = patient?.users
-      const driverAssignment = assignmentsMap[assignment.id]
-      const driverId = driverAssignment?.driver_id
-      const driver = driverId ? driversMap[driverId] : null
-      const driverDetails = driver?.drivers?.[0]
+      const patientUser = patientUsersMap[assignment.patient_id]
+      const driverId = assignment.driver_id
+      const driverDetails = driverId ? driversMap[driverId] : null
 
       // Determine priority based on status and time
       let priority: 'high' | 'medium' | 'low' = 'medium'
@@ -172,12 +147,12 @@ export async function GET(request: NextRequest) {
         allergies: patient?.allergies,
         emergencyContactName: patient?.emergency_contact_name,
         emergencyContactPhone: patient?.emergency_contact_phone,
-        assignedDriver: driver?.full_name || null,
-        driverPhone: driver?.phone || null,
-        driverEmail: driver?.email || null,
+        assignedDriver: assignment.driver_name || null,
+        driverPhone: assignment.driver_phone || null,
+        driverEmail: null,
         vehicleNumber: driverDetails?.vehicle_number || null,
         licenseNumber: driverDetails?.license_number || null,
-        companyName: driverDetails?.transport_companies?.company_name || null,
+        companyName: driverDetails?.transport_company_id ? (companyNameById[driverDetails.transport_company_id] || null) : null,
         requestedAt: assignment.requested_at,
         assignedAt: assignment.assigned_at,
         completedAt: assignment.completed_at,

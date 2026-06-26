@@ -535,19 +535,33 @@ export default function AdminUsersPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Button variant="outline" className="h-20 flex-col">
-                <UserPlus className="h-6 w-6 mb-2" />
-                Add New User
-              </Button>
-              <Button variant="outline" className="h-20 flex-col">
-                <Shield className="h-6 w-6 mb-2" />
-                Manage Roles
-              </Button>
-              <Button variant="outline" className="h-20 flex-col">
+              <Link href="/admin/users/add" className="contents">
+                <Button variant="outline" className="h-20 flex-col w-full">
+                  <UserPlus className="h-6 w-6 mb-2" />
+                  Add New User
+                </Button>
+              </Link>
+              <Link href="/admin/users/assign-roles" className="contents">
+                <Button variant="outline" className="h-20 flex-col w-full">
+                  <Shield className="h-6 w-6 mb-2" />
+                  Manage Roles
+                </Button>
+              </Link>
+              <Button
+                variant="outline"
+                className="h-20 flex-col"
+                disabled
+                title="Invitations are not yet available"
+              >
                 <Mail className="h-6 w-6 mb-2" />
                 Send Invitations
               </Button>
-              <Button variant="outline" className="h-20 flex-col">
+              <Button
+                variant="outline"
+                className="h-20 flex-col"
+                disabled
+                title="Bulk actions are not yet available"
+              >
                 <Users className="h-6 w-6 mb-2" />
                 Bulk Actions
               </Button>

@@ -30,6 +30,53 @@ export async function POST(req: NextRequest) {
 
     console.log('Creating patient registration for:', { email, clerkUserId })
 
+    // Basic input validation (defense-in-depth; the client also validates).
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (typeof clerkUserId !== 'string' || !clerkUserId.startsWith('user_')) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid registration request' },
+        { status: 400 },
+      )
+    }
+    if (typeof email !== 'string' || !EMAIL_RE.test(email)) {
+      return NextResponse.json(
+        { success: false, error: 'A valid email is required' },
+        { status: 400 },
+      )
+    }
+    if (typeof firstName !== 'string' || !firstName.trim() ||
+        typeof lastName !== 'string' || !lastName.trim()) {
+      return NextResponse.json(
+        { success: false, error: 'First and last name are required' },
+        { status: 400 },
+      )
+    }
+
+    // Idempotency / anti-duplicate guard: if a user row already exists for this
+    // Clerk id or email, do not create a second one (the registration POST can be
+    // retried by the client, and the endpoint is unauthenticated).
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id, clerk_user_id, email')
+      .or(`clerk_user_id.eq.${clerkUserId},email.eq.${email}`)
+      .maybeSingle()
+
+    if (existing) {
+      if (existing.clerk_user_id === clerkUserId) {
+        // Same Clerk identity retrying — treat as success (already registered).
+        return NextResponse.json({
+          success: true,
+          message: 'Patient already registered',
+          data: { user: existing },
+        })
+      }
+      // Email belongs to a different Clerk identity — refuse to overwrite/duplicate.
+      return NextResponse.json(
+        { success: false, error: 'An account already exists for this email' },
+        { status: 409 },
+      )
+    }
+
     // Create user record
     const { data: user, error: userError } = await supabase
       .from('users')
@@ -68,8 +115,7 @@ export async function POST(req: NextRequest) {
       console.error('Error creating user:', userError)
       return NextResponse.json({
         success: false,
-        error: 'Failed to create user record',
-        details: userError.message
+        error: 'Failed to create user record'
       }, { status: 500 })
     }
 
@@ -96,8 +142,7 @@ export async function POST(req: NextRequest) {
       
       return NextResponse.json({
         success: false,
-        error: 'Failed to create patient record',
-        details: patientError.message
+        error: 'Failed to create patient record'
       }, { status: 500 })
     }
 
@@ -114,11 +159,9 @@ export async function POST(req: NextRequest) {
 
   } catch (error: unknown) {
     console.error('Patient registration error:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json({
       success: false,
-      error: 'Registration failed',
-      details: errorMessage
+      error: 'Registration failed'
     }, { status: 500 })
   }
 }

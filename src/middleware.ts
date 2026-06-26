@@ -11,17 +11,24 @@ const isPublicRoute = createRouteMatcher([
   '/sign-up(.*)',
   '/demo(.*)',
   '/register(.*)',
+  // The registration form POSTs to /api/register/* during sign-up, BEFORE a Clerk
+  // session exists (setActive runs only after email verification). Without this
+  // entry the unauthenticated POST is redirected to /sign-in (200 HTML), so the DB
+  // user/patient rows are never created even though the Clerk account was. These
+  // handlers do not rely on auth() — they key off the caller-supplied clerkUserId —
+  // so they must be reachable during the pre-session signup step.
+  '/api/register(.*)',
   '/setup(.*)',
   '/mobile-app-required(.*)', // Allow access to mobile app redirect page
   '/test-mobile-redirect(.*)', // Allow access to test page
   '/api/webhooks(.*)',
-  '/api/admin/create-initial-user(.*)',
-  '/api/admin/users/sync(.*)',
-  '/api/admin/migrate-users(.*)',
-  '/api/admin/auto-sync(.*)',
-  '/api/admin/migrate-to-user-records(.*)',
-  '/api/admin/create-user-records-table(.*)',
-  '/api/admin/populate-user-records(.*)',
+  // NOTE: /api/admin/* setup & migration endpoints (create-initial-user, users/sync,
+  // migrate-users, auto-sync, migrate-to-user-records, create-user-records-table,
+  // populate-user-records) were previously whitelisted as PUBLIC. That exposed
+  // privileged bootstrap/migration actions (e.g. creating an admin user record) to
+  // unauthenticated callers. They have been removed from the public list so they fall
+  // through to the authentication gate below. (Full per-handler admin role assertion
+  // should also be added inside each route handler.)
   '/api/sync-users(.*)',
   '/api/sync-clerk-to-tables(.*)',
   '/api/debug(.*)',

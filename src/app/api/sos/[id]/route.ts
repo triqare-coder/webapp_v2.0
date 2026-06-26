@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SOSService } from '@/services/sosService'
+import { normalizeSOSStatus } from '@/lib/sosStatus'
 
 // GET /api/sos/[id] - Get single SOS request
 export async function GET(
@@ -66,7 +67,18 @@ export async function PUT(
         )
       }
 
-      const { success, error } = await SOSService.updateStatus(sosRequestId, status)
+      // Validate against the canonical SOS status vocabulary (normalizing any
+      // legacy alias) so an arbitrary/invalid status can never be written to a
+      // live emergency request.
+      const normalizedStatus = normalizeSOSStatus(status)
+      if (!normalizedStatus) {
+        return NextResponse.json(
+          { error: 'Invalid status value' },
+          { status: 400 }
+        )
+      }
+
+      const { success, error } = await SOSService.updateStatus(sosRequestId, normalizedStatus)
       
       if (error) {
         return NextResponse.json({ error }, { status: 500 })

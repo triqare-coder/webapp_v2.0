@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { Loader2, Mail, CheckCircle, ArrowRight } from 'lucide-react'
 import { Logo } from '@/components/ui/logo'
+import { getDefaultDashboardPath } from '@/lib/navigation'
+import type { UserRole } from '@/types'
 
 function VerifyEmailContent() {
   const router = useRouter()
@@ -43,15 +45,12 @@ function VerifyEmailContent() {
         
         toast.success('Email verified successfully! Welcome to Emergency Response.')
         
-        // Redirect based on user role
-        const userRole = completeSignUp.unsafeMetadata?.role
-        if (userRole === 'patient') {
-          router.push('/dashboard/patient')
-        } else if (userRole === 'transport_company') {
-          router.push('/dashboard/transport-company')
-        } else {
-          router.push('/dashboard')
-        }
+        // Redirect based on user role. Use the central route map so we always land
+        // on a route that actually exists (e.g. transport_company -> /transport/dashboard,
+        // patient -> /mobile-app-required) instead of the non-existent
+        // /dashboard/patient and /dashboard/transport-company paths.
+        const userRole = completeSignUp.unsafeMetadata?.role as UserRole | undefined
+        router.push(getDefaultDashboardPath(userRole ?? null))
       } else {
         console.error('Verification incomplete:', completeSignUp)
         toast.error('Verification incomplete. Please try again.')

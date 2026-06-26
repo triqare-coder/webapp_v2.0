@@ -38,26 +38,11 @@ export default function AddPatientPage() {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // Show success message
-    toast.success('Patient added successfully!', {
-      description: `${formData.firstName} ${formData.lastName} has been added to the system.`
-    })
-
-    // Reset form
-    setFormData({
-      firstName: '',
-      lastName: '',
-      dateOfBirth: '',
-      gender: '',
-      phoneNumber: '',
-      address: '',
-      medicalHistory: '',
-      emergencyContactName: '',
-      emergencyContactRelationship: '',
-      emergencyContactPhone: ''
+    // This form is not yet connected to the patient-creation backend. Do NOT
+    // report a fabricated success — that would make a reviewer believe a patient
+    // record exists when nothing was persisted. Surface an honest message instead.
+    toast.error('Saving is not available yet', {
+      description: 'This form is not connected to the backend, so no patient record was created.'
     })
 
     setIsSubmitting(false)

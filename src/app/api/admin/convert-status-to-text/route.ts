@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 // POST /api/admin/convert-status-to-text - Convert SOS status from enum to text
+// SECURITY: mutates live sos_requests rows (writes/restores status). One-time
+// migration tooling — blocked in production and admin-only otherwise.
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Disabled in production' }, { status: 403 })
+  }
+
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
+
   try {
     console.log('Starting status column conversion from enum to text...')
 

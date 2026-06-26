@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
+// SECURITY: schema-bootstrap tooling that creates a live table. Admin-only.
 export async function POST() {
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
   try {
     console.log('Creating pending_csv_imports table...')
 

@@ -63,16 +63,15 @@ export default function EditPatientPage({ params }: EditPatientPageProps) {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // Show success message
-    toast.success('Patient updated successfully!', {
-      description: `${formData.firstName} ${formData.lastName}'s information has been updated.`
+    // This form is not yet connected to the patient-update backend. Do NOT report
+    // a fabricated success or navigate away as if the change was saved — that would
+    // make a reviewer believe the patient record was updated when nothing was
+    // persisted. Surface an honest message and keep the user on the form instead.
+    toast.error('Saving is not available yet', {
+      description: 'This form is not connected to the backend, so no changes were saved.'
     })
 
     setIsSubmitting(false)
-    router.push(`/patients/${params.id}`)
   }
 
   return (

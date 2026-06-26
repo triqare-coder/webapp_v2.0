@@ -168,10 +168,11 @@ export default function PatientRegistrationPage() {
         }
       })
 
-      // Send verification email
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
-
-      // Create database records via API
+      // Create database records via API BEFORE sending the verification email.
+      // This ordering ensures we never send the "you're registered" email (or claim
+      // success) when the DB write failed: a failure here aborts the flow, so the
+      // user can simply retry — the Clerk sign-up attempt is still pending and the
+      // unverified email is not permanently locked.
       const response = await fetch('/api/register/patient', {
         method: 'POST',
         headers: {
@@ -183,9 +184,27 @@ export default function PatientRegistrationPage() {
         }),
       })
 
-      if (!response.ok) {
-        throw new Error('Failed to create patient record')
+      // Defense-in-depth: the request can be silently redirected to the sign-in
+      // page (no active session yet), which returns 200 HTML and would otherwise
+      // look like a success. Require a real JSON success payload before proceeding
+      // so we never claim the DB record was created when it was not.
+      if (response.redirected || !response.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('Failed to create patient record. Please try again or contact support.')
       }
+
+      let result_json: { success?: boolean; error?: string } = {}
+      try {
+        result_json = await response.json()
+      } catch {
+        throw new Error('Failed to create patient record. Please try again or contact support.')
+      }
+
+      if (!response.ok || result_json.success !== true) {
+        throw new Error(result_json.error || 'Failed to create patient record')
+      }
+
+      // DB record confirmed created — now send the verification email.
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
 
       toast.success('Registration successful! Please check your email to verify your account.')
 

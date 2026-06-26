@@ -38,7 +38,12 @@ export async function GET(request: NextRequest) {
       query = query.eq('role', role)
     }
     if (search) {
-      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`)
+      // Strip PostgREST-reserved characters (, . ( ) : *) so the term cannot inject
+      // extra OR predicates or break the query.
+      const safeSearch = search.replace(/[,.()*:%\\]/g, '').slice(0, 100)
+      if (safeSearch) {
+        query = query.or(`full_name.ilike.%${safeSearch}%,email.ilike.%${safeSearch}%`)
+      }
     }
     
     query = query.range(offset, offset + limit - 1)

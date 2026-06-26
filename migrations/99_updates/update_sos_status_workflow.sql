@@ -27,20 +27,28 @@ SET status = 'Arrived at Hospital'
 WHERE status = 'Completed';
 
 -- Step 3: Add new CHECK constraint with updated status values
-ALTER TABLE public.sos_requests 
-ADD CONSTRAINT sos_requests_status_check 
+-- 'Timed Out' is a first-class terminal value: when no driver is found within the
+-- configured timeout, the app records the request as 'Timed Out' (distinct from a
+-- deliberate user 'Cancelled') so history/reporting can tell the two apart. It is a
+-- live value in the app's SOSStatus union and TERMINAL_STATUSES; without it here the
+-- app had to down-map 'Timed Out' -> 'Cancelled' before every write to avoid a
+-- 23514 check_violation. Adding it removes that latent crash and makes the timeout
+-- outcome persistable as itself.
+ALTER TABLE public.sos_requests
+ADD CONSTRAINT sos_requests_status_check
 CHECK (status IN (
     'SOS Triggered',
     'Driver En Route',
     'Transport Arrived',
     'User Picked Up',
     'Arrived at Hospital',
-    'Cancelled'
+    'Cancelled',
+    'Timed Out'
 ));
 
 -- Step 4: Update default value
-ALTER TABLE public.sos_requests 
+ALTER TABLE public.sos_requests
 ALTER COLUMN status SET DEFAULT 'SOS Triggered';
 
-COMMENT ON COLUMN public.sos_requests.status IS 'Current status of the SOS request. Workflow: SOS Triggered → Driver En Route → Transport Arrived → User Picked Up → Arrived at Hospital';
+COMMENT ON COLUMN public.sos_requests.status IS 'Current status of the SOS request. Workflow: SOS Triggered → Driver En Route → Transport Arrived → User Picked Up → Arrived at Hospital. Terminal: Arrived at Hospital, Cancelled (user cancel), Timed Out (no driver found within the dispatch timeout).';
 

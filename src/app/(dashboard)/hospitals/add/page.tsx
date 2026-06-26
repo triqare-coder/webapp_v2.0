@@ -50,26 +50,12 @@ export default function AddHospitalPage() {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // Show success message
-    toast.success('Hospital added successfully!', {
-      description: `${formData.name} has been added to the hospital network.`
+    // This form is not yet connected to the hospital-creation backend. Do NOT
+    // report a fabricated success — a phantom hospital in the dispatch network is a
+    // safety-relevant data-integrity lie. Surface an honest message instead.
+    toast.error('Saving is not available yet', {
+      description: 'This form is not connected to the backend, so no hospital was added to the network.'
     })
-
-    // Reset form
-    setFormData({
-      name: '',
-      address: '',
-      phoneNumber: '',
-      email: '',
-      capacity: '',
-      currentOccupancy: '',
-      latitude: '',
-      longitude: ''
-    })
-    setSpecialties(['Emergency Medicine'])
 
     setIsSubmitting(false)
   }

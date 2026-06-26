@@ -62,16 +62,18 @@ export default function CreateSOSPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    console.log('Creating SOS case:', formData)
-    setLoading(false)
-    
-    // In a real app, redirect to SOS list or show success message
-    alert('SOS case created successfully! Emergency response has been dispatched.')
+
+    // This form is not yet wired to the SOS dispatch backend. Previously it
+    // faked success with a setTimeout + alert claiming an emergency had been
+    // dispatched, which is dangerous in an emergency-response product because
+    // no SOS record is ever created. Until it is connected to the real SOS
+    // creation service, we must NOT report a false dispatch. Use the working
+    // dispatch flow on the /erteam/sos page instead.
+    console.log('SOS create form submitted (not connected to backend):', formData)
+    alert(
+      'This form is not connected to the dispatch system yet, so NO emergency was created or dispatched. ' +
+      'Please use the SOS dispatch page to create and dispatch a real emergency.'
+    )
   }
 
   const handleInputChange = (field: string, value: string) => {

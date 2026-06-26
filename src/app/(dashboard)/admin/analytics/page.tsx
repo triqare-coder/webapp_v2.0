@@ -43,6 +43,7 @@ import {
   Area
 } from 'recharts'
 import dynamic from 'next/dynamic'
+import { toast } from 'sonner'
 
 // Dynamic imports for D3 charts (client-side only)
 const D3GaugeChart = dynamic(() => import('@/components/charts/D3GaugeChart'), { ssr: false })
@@ -136,27 +137,35 @@ export default function AnalyticsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchAnalytics = async () => {
     try {
       setLoading(true)
+      setError(null)
       console.log('Fetching analytics data...')
-      
+
       const response = await fetch(`/api/admin/analytics/comprehensive`)
       console.log('Analytics API response status:', response.status)
-      
+
       const result = await response.json()
       console.log('Analytics API response:', result)
 
       if (result.success) {
         setAnalyticsData(result.data)
+        setError(null)
         console.log('Analytics data loaded successfully')
       } else {
-        console.error('Failed to load analytics data:', result.error || 'Unknown error')
+        const message = result.error || 'Unknown error'
+        console.error('Failed to load analytics data:', message)
         console.error('Full response:', result)
+        setError(message)
+        toast.error('Failed to load analytics data')
       }
     } catch (error) {
       console.error('Error loading analytics:', error)
+      setError(error instanceof Error ? error.message : 'Failed to load analytics data')
+      toast.error('Failed to load analytics data')
     } finally {
       setLoading(false)
     }
@@ -278,6 +287,31 @@ export default function AnalyticsPage() {
             </Card>
           ))}
         </div>
+      </div>
+    )
+  }
+
+  if (error && !analyticsData) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">System Analytics</h1>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Failed to load analytics</h2>
+            <p className="text-gray-600 mb-6 max-w-md">{error}</p>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Try Again
+            </button>
+          </CardContent>
+        </Card>
       </div>
     )
   }

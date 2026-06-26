@@ -21,6 +21,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
+    // SAFETY: never strand an in-progress emergency. Reject deactivation while the driver
+    // is on an active (non-terminal) SOS — the dispatcher must reassign or complete it
+    // first, otherwise the SOS row keeps pointing at a now-unavailable driver.
+    if (action === 'deactivate') {
+      const { data: driverRow } = await supabase
+        .from('drivers')
+        .select('current_request_id')
+        .eq('user_id', driverId)
+        .maybeSingle()
+
+      const { data: activeSos } = await supabase
+        .from('sos_requests')
+        .select('id')
+        .eq('driver_id', driverId)
+        .not('status', 'in', '("Arrived at Hospital","Cancelled")')
+        .limit(1)
+
+      if ((driverRow?.current_request_id) || (activeSos && activeSos.length > 0)) {
+        return NextResponse.json(
+          { error: 'Driver has an active SOS — reassign or complete it before deactivating' },
+          { status: 409 }
+        )
+      }
+    }
+
     const update =
       action === 'deactivate'
         ? { status: 'inactive', is_available: false }

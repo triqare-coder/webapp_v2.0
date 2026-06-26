@@ -42,29 +42,58 @@ CREATE TRIGGER update_notifications_updated_at
 -- Enable Row Level Security
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
+-- NOTE: notifications.user_id is the internal public.users.id (UUID), but
+-- auth.uid() is the Clerk subject (text). Comparing them directly (auth.uid() =
+-- user_id) is both a type and a semantic mismatch and never matches, so owners
+-- could never read/update/delete their own notifications. The policies below use
+-- the same clerk-join pattern as the patients/drivers/sos_requests policies in
+-- 02_security/01_rls_policies.sql, resolving the internal id via clerk_user_id.
+
 -- RLS Policy: Users can only see their own notifications
+DROP POLICY IF EXISTS notifications_select_own ON public.notifications;
 CREATE POLICY notifications_select_own
     ON public.notifications
     FOR SELECT
-    USING (auth.uid() = user_id);
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.users
+            WHERE users.id = notifications.user_id
+            AND users.clerk_user_id = auth.uid()::text
+        )
+    );
 
 -- RLS Policy: Users can update their own notifications (mark as read)
+DROP POLICY IF EXISTS notifications_update_own ON public.notifications;
 CREATE POLICY notifications_update_own
     ON public.notifications
     FOR UPDATE
-    USING (auth.uid() = user_id);
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.users
+            WHERE users.id = notifications.user_id
+            AND users.clerk_user_id = auth.uid()::text
+        )
+    );
 
 -- RLS Policy: System can insert notifications for any user
+DROP POLICY IF EXISTS notifications_insert_system ON public.notifications;
 CREATE POLICY notifications_insert_system
     ON public.notifications
     FOR INSERT
     WITH CHECK (true);
 
 -- RLS Policy: Users can delete their own notifications
+DROP POLICY IF EXISTS notifications_delete_own ON public.notifications;
 CREATE POLICY notifications_delete_own
     ON public.notifications
     FOR DELETE
-    USING (auth.uid() = user_id);
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.users
+            WHERE users.id = notifications.user_id
+            AND users.clerk_user_id = auth.uid()::text
+        )
+    );
 
 -- Grant permissions
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.notifications TO authenticated;

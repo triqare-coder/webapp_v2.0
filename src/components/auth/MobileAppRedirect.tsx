@@ -54,20 +54,23 @@ export function MobileAppRedirect({ role, userName }: MobileAppRedirectProps) {
 
   const config = roleConfig[role as keyof typeof roleConfig]
 
-  if (!config) {
+  // Hook must run on every render (Rules of Hooks). The redirect logic is guarded
+  // inside the effect body so it only fires for roles without a mobile-app config.
+  useEffect(() => {
+    if (config) return
     // Fallback for other roles - redirect to appropriate dashboard
-    useEffect(() => {
-      const dashboardPaths = {
-        admin: '/admin/dashboard',
-        ert: '/erteam/dashboard',
-        transport_company: '/transport/dashboard'
-      }
-      const path = dashboardPaths[role as keyof typeof dashboardPaths]
-      if (path) {
-        router.push(path)
-      }
-    }, [role, router])
-    
+    const dashboardPaths = {
+      admin: '/admin/dashboard',
+      ert: '/erteam/dashboard',
+      transport_company: '/transport/dashboard'
+    }
+    const path = dashboardPaths[role as keyof typeof dashboardPaths]
+    if (path) {
+      router.push(path)
+    }
+  }, [config, role, router])
+
+  if (!config) {
     return null
   }
 

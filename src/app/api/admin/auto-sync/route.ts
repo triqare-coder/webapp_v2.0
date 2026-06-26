@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { AutoSyncService } from '@/services/autoSyncService'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
-// Trigger automatic background sync for unsynced users
+// Trigger automatic background sync for unsynced users (ADMIN ONLY).
+// Previously reachable unauthenticated; now requires an admin session.
 export async function POST(req: NextRequest) {
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
   try {
     console.log('🚀 Starting automatic background sync...')
 
@@ -31,8 +35,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Get sync status
+// Get sync status (ADMIN ONLY — exposes user emails / sync state)
 export async function GET(req: NextRequest) {
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
   try {
     const { supabase } = await import('@/lib/supabase')
     

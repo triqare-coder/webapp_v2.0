@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -85,16 +86,37 @@ export default function AdminReportsPage() {
               <BarChart3 className="h-3 w-3 mr-1" />
               Admin Access
             </Badge>
-            <Button variant="outline">
+            <Button variant="outline" disabled title="Filtering is not available yet">
               <Filter className="h-4 w-4 mr-2" />
               Filter Reports
             </Button>
-            <Button>
+            <Button disabled title="Export is not available yet">
               <Download className="h-4 w-4 mr-2" />
               Export Data
             </Button>
           </div>
         </div>
+
+        {/* Sample-data notice: the metrics below are illustrative placeholders,
+            not live system data. The dashboard uses this banner so a reviewer is
+            not misled into treating these numbers as real operational metrics. */}
+        <Card className="border-yellow-300 bg-yellow-50">
+          <CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 py-4">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
+              <p className="text-sm text-yellow-800">
+                <strong>Sample data:</strong> The figures on this page are illustrative placeholders and do
+                not reflect live system activity. For real, live metrics use the Analytics dashboard.
+              </p>
+            </div>
+            <Link href="/admin/analytics">
+              <Button variant="outline" className="whitespace-nowrap">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Go to Analytics
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
 
         {/* Date Range Selector */}
         <Card>
@@ -114,7 +136,7 @@ export default function AdminReportsPage() {
                 <label className="text-sm font-medium">To:</label>
                 <Input type="date" className="w-40" defaultValue="2024-06-30" />
               </div>
-              <Button variant="outline">Apply Filter</Button>
+              <Button variant="outline" disabled title="Filtering is not available yet">Apply Filter</Button>
             </div>
           </CardContent>
         </Card>
@@ -297,19 +319,19 @@ export default function AdminReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Button variant="outline" className="h-20 flex-col">
+              <Button variant="outline" className="h-20 flex-col" disabled title="Report generation is not available yet">
                 <FileText className="h-6 w-6 mb-2" />
                 Emergency Report
               </Button>
-              <Button variant="outline" className="h-20 flex-col">
+              <Button variant="outline" className="h-20 flex-col" disabled title="Report generation is not available yet">
                 <Building2 className="h-6 w-6 mb-2" />
                 Hospital Analysis
               </Button>
-              <Button variant="outline" className="h-20 flex-col">
+              <Button variant="outline" className="h-20 flex-col" disabled title="Report generation is not available yet">
                 <Truck className="h-6 w-6 mb-2" />
                 Fleet Performance
               </Button>
-              <Button variant="outline" className="h-20 flex-col">
+              <Button variant="outline" className="h-20 flex-col" disabled title="Report generation is not available yet">
                 <Users className="h-6 w-6 mb-2" />
                 Staff Reports
               </Button>

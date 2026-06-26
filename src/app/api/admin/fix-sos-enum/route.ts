@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 // POST /api/admin/fix-sos-enum - Fix the SOS status enum by adding missing values
+// SECURITY: this endpoint MUTATES a live sos_requests row (writes each candidate
+// status then restores the original). It must never be reachable unauthenticated
+// on a live emergency system: blocked in production and admin-only otherwise.
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Disabled in production' }, { status: 403 })
+  }
+
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
+
   try {
     console.log('Starting SOS enum fix...')
 

@@ -27,9 +27,13 @@ export async function GET(request: NextRequest) {
       .eq('is_active', true)
       .limit(limit)
 
-    // Apply search filter if provided
+    // Apply search filter if provided. Strip PostgREST-reserved characters (, . ( ) : *)
+    // from the raw input so the term cannot inject extra OR predicates / break the query.
     if (search) {
-      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,employee_id.ilike.%${search}%`)
+      const safeSearch = search.replace(/[,.()*:%\\]/g, '').slice(0, 100)
+      if (safeSearch) {
+        query = query.or(`full_name.ilike.%${safeSearch}%,email.ilike.%${safeSearch}%,phone.ilike.%${safeSearch}%,employee_id.ilike.%${safeSearch}%`)
+      }
     }
 
     // Order by name for consistent results
@@ -67,14 +71,32 @@ export async function GET(request: NextRequest) {
         .neq('status', 'available')
       busyDriverRows?.forEach(d => d.user_id && busy.add(d.user_id))
 
-      // 3. Legacy junction assignments tied to still-active requests.
-      const { data: assignments } = await supabase
-        .from('sos_request_assigned')
-        .select('driver_id, sos_requests!inner ( id, status )')
-      assignments?.forEach(a => {
-        const sos = (a as any).sos_requests
-        if (sos && sos.status !== 'Arrived at Hospital' && sos.status !== 'Cancelled') busy.add((a as any).driver_id)
-      })
+      // 3. Legacy junction assignments tied to still-active requests. Avoid the broken
+      // PostgREST embed (sos_requests!inner — FK not in schema cache, 500s DB-wide):
+      // fetch the junction rows plainly, then batch-fetch the referenced request statuses
+      // and filter in JS. Wrapped in try/catch so a junction error can't 500 the route
+      // (steps 1-2 already cover busy drivers via the canonical inline + drivers models).
+      try {
+        const { data: assignments } = await supabase
+          .from('sos_request_assigned')
+          .select('driver_id, sos_request_id')
+        const sosIds = [...new Set((assignments || []).map(a => (a as any).sos_request_id).filter(Boolean))]
+        if (sosIds.length > 0) {
+          const { data: sosRows } = await supabase
+            .from('sos_requests')
+            .select('id, status')
+            .in('id', sosIds)
+          const statusById = Object.fromEntries((sosRows || []).map(r => [r.id, r.status]))
+          assignments?.forEach(a => {
+            const status = statusById[(a as any).sos_request_id]
+            if (status && status !== 'Arrived at Hospital' && status !== 'Cancelled') {
+              busy.add((a as any).driver_id)
+            }
+          })
+        }
+      } catch (junctionErr) {
+        console.warn('available-drivers: legacy junction lookup failed (non-fatal):', junctionErr)
+      }
 
       assignedDriverIds = Array.from(busy)
     }

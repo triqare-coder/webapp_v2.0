@@ -1,23 +1,23 @@
 'use client'
 
-import { useState, use } from 'react'
+import { useState, use, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { mockPatients, mockSOSCases } from '@/lib/mock-data'
-import { formatDate, formatPhoneNumber, calculateAge } from '@/lib/utils'
-import { 
-  ArrowLeft, 
-  Edit, 
-  User, 
-  Phone, 
-  MapPin, 
-  Heart, 
+import { formatDate, calculateAge } from '@/lib/utils'
+import {
+  ArrowLeft,
+  Edit,
+  User,
+  Phone,
+  MapPin,
+  Heart,
   AlertTriangle,
   Calendar,
-  Contact
+  Contact,
+  Loader2
 } from 'lucide-react'
 
 interface PatientViewPageProps {
@@ -26,17 +26,101 @@ interface PatientViewPageProps {
   }>
 }
 
+// Real patient shape returned by GET /api/patients/[id] (PatientService.getPatientById)
+interface RealPatient {
+  user_id: string
+  full_name?: string
+  email?: string
+  dob?: string
+  gender?: string
+  blood_group?: string
+  allergies?: string
+  address_line?: string
+  emergency_contact_name?: string
+  emergency_contact_phone?: string
+  emergency_contact_relation?: string
+}
+
+interface PatientSOSCase {
+  id: string
+  status?: string
+  requested_at?: string
+}
+
 export default function PatientViewPage({ params }: PatientViewPageProps) {
   const router = useRouter()
   const resolvedParams = use(params)
-  const [patient] = useState(() => mockPatients.find(p => p.id === resolvedParams.id))
-  
-  if (!patient) {
+  const patientId = resolvedParams.id
+
+  const [patient, setPatient] = useState<RealPatient | null>(null)
+  const [cases, setCases] = useState<PatientSOSCase[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        const res = await fetch(`/api/patients/${patientId}`)
+        if (res.status === 404) {
+          if (!cancelled) {
+            setPatient(null)
+            setError(null)
+          }
+          return
+        }
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body.error || 'Failed to load patient')
+        }
+        const data = await res.json()
+        if (!cancelled) setPatient(data.patient ?? null)
+
+        // Best-effort: load this patient's SOS history. Failure here must not
+        // break the patient view, so swallow errors and show an empty state.
+        try {
+          const sosRes = await fetch(`/api/sos-requests?limit=100`)
+          if (sosRes.ok) {
+            const sosBody = await sosRes.json()
+            const all = Array.isArray(sosBody.data) ? sosBody.data : []
+            const mine = all.filter((c: any) => c.patient_id === patientId)
+            if (!cancelled) setCases(mine)
+          }
+        } catch {
+          // ignore SOS history failures
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load patient')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [patientId])
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-[40vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    )
+  }
+
+  if (error) {
     return (
       <div className="p-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Patient Not Found</h1>
-          <p className="text-gray-600 mb-4">The patient you're looking for doesn't exist.</p>
+          <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-red-500" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Failed to load patient</h1>
+          <p className="text-gray-600 mb-4">{error}</p>
           <Button onClick={() => router.push('/patients')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Patients
@@ -46,8 +130,23 @@ export default function PatientViewPage({ params }: PatientViewPageProps) {
     )
   }
 
-  const patientCases = mockSOSCases.filter(c => c.patientId === patient.id)
-  const age = calculateAge(patient.dateOfBirth)
+  if (!patient) {
+    return (
+      <div className="p-6">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Patient Not Found</h1>
+          <p className="text-gray-600 mb-4">The patient you&apos;re looking for doesn&apos;t exist.</p>
+          <Button onClick={() => router.push('/patients')}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Patients
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  const fullName = patient.full_name || 'Unknown Patient'
+  const age = patient.dob ? calculateAge(new Date(patient.dob)) : null
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -59,12 +158,12 @@ export default function PatientViewPage({ params }: PatientViewPageProps) {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
-              {patient.firstName} {patient.lastName}
+              {fullName}
             </h1>
             <p className="text-gray-600">Patient Details</p>
           </div>
         </div>
-        <Button onClick={() => router.push(`/patients/${patient.id}/edit`)}>
+        <Button onClick={() => router.push(`/patients/${patient.user_id}/edit`)}>
           <Edit className="h-4 w-4 mr-2" />
           Edit Patient
         </Button>
@@ -90,35 +189,40 @@ export default function PatientViewPage({ params }: PatientViewPageProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div>
                   <label className="text-sm font-medium text-gray-500">Full Name</label>
-                  <p className="text-lg font-semibold">{patient.firstName} {patient.lastName}</p>
+                  <p className="text-lg font-semibold">{fullName}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Age</label>
-                  <p className="text-lg font-semibold">{age} years old</p>
+                  <p className="text-lg font-semibold">{age != null ? `${age} years old` : 'N/A'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Gender</label>
-                  <Badge variant="outline" className="capitalize">
-                    {patient.gender}
-                  </Badge>
+                  {patient.gender ? (
+                    <Badge variant="outline" className="capitalize">
+                      {patient.gender}
+                    </Badge>
+                  ) : (
+                    <p className="text-lg font-semibold">N/A</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Date of Birth</label>
                   <p className="text-lg font-semibold flex items-center">
                     <Calendar className="h-4 w-4 mr-2" />
-                    {formatDate(patient.dateOfBirth)}
+                    {patient.dob ? formatDate(new Date(patient.dob)) : 'N/A'}
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Phone Number</label>
-                  <p className="text-lg font-semibold flex items-center">
-                    <Phone className="h-4 w-4 mr-2" />
-                    {formatPhoneNumber(patient.phoneNumber)}
-                  </p>
+                  <label className="text-sm font-medium text-gray-500">Email</label>
+                  <p className="text-lg font-semibold">{patient.email || 'N/A'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Blood Group</label>
+                  <p className="text-lg font-semibold">{patient.blood_group || 'N/A'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-500">Patient ID</label>
-                  <p className="text-lg font-semibold">{patient.id}</p>
+                  <p className="text-lg font-semibold break-all">{patient.user_id}</p>
                 </div>
               </div>
             </CardContent>
@@ -133,7 +237,7 @@ export default function PatientViewPage({ params }: PatientViewPageProps) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-lg">{patient.address}</p>
+              <p className="text-lg">{patient.address_line || 'No address on record'}</p>
             </CardContent>
           </Card>
 
@@ -146,23 +250,27 @@ export default function PatientViewPage({ params }: PatientViewPageProps) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Name</label>
-                  <p className="text-lg font-semibold">{patient.emergencyContact.name}</p>
+              {patient.emergency_contact_name || patient.emergency_contact_phone ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Name</label>
+                    <p className="text-lg font-semibold">{patient.emergency_contact_name || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Relationship</label>
+                    <p className="text-lg font-semibold capitalize">{patient.emergency_contact_relation || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Phone Number</label>
+                    <p className="text-lg font-semibold flex items-center">
+                      <Phone className="h-4 w-4 mr-2" />
+                      {patient.emergency_contact_phone || 'N/A'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Relationship</label>
-                  <p className="text-lg font-semibold capitalize">{patient.emergencyContact.relationship}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Phone Number</label>
-                  <p className="text-lg font-semibold flex items-center">
-                    <Phone className="h-4 w-4 mr-2" />
-                    {formatPhoneNumber(patient.emergencyContact.phoneNumber)}
-                  </p>
-                </div>
-              </div>
+              ) : (
+                <p className="text-gray-500">No emergency contact on record.</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -172,18 +280,19 @@ export default function PatientViewPage({ params }: PatientViewPageProps) {
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Heart className="h-5 w-5 mr-2" />
-                Medical History
+                Medical Information
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {patient.medicalHistory ? (
-                <div className="prose max-w-none">
-                  <p className="text-gray-700 leading-relaxed">{patient.medicalHistory}</p>
+              {patient.allergies ? (
+                <div>
+                  <label className="text-sm font-medium text-gray-500">Allergies</label>
+                  <p className="text-gray-700 leading-relaxed">{patient.allergies}</p>
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   <Heart className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p>No medical history recorded for this patient.</p>
+                  <p>No medical information recorded for this patient.</p>
                 </div>
               )}
             </CardContent>
@@ -199,31 +308,23 @@ export default function PatientViewPage({ params }: PatientViewPageProps) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {patientCases.length > 0 ? (
+              {cases.length > 0 ? (
                 <div className="space-y-4">
-                  {patientCases.map((case_) => (
+                  {cases.map((case_) => (
                     <div key={case_.id} className="border rounded-lg p-4">
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <h3 className="font-semibold">Case #{case_.id}</h3>
-                          <p className="text-sm text-gray-600">{case_.description}</p>
                         </div>
-                        <Badge className={`${case_.severity === 'critical' ? 'bg-red-100 text-red-800' : 
-                          case_.severity === 'high' ? 'bg-orange-100 text-orange-800' :
-                          case_.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-green-100 text-green-800'}`}>
-                          {case_.severity}
-                        </Badge>
+                        <Badge variant="outline">{case_.status || 'Unknown'}</Badge>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                         <div>
-                          <span className="font-medium">Date:</span> {formatDate(case_.createdAt)}
+                          <span className="font-medium">Date:</span>{' '}
+                          {case_.requested_at ? formatDate(new Date(case_.requested_at)) : 'N/A'}
                         </div>
                         <div>
-                          <span className="font-medium">Status:</span> {case_.status.replace('_', ' ')}
-                        </div>
-                        <div>
-                          <span className="font-medium">Response Time:</span> {case_.responseTime || 'N/A'}m
+                          <span className="font-medium">Status:</span> {case_.status || 'Unknown'}
                         </div>
                       </div>
                     </div>

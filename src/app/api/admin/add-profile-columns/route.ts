@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
+// SECURITY: schema-bootstrap tooling that ALTERs the live users table. Admin-only.
 export async function POST(request: NextRequest) {
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
   try {
     console.log('Adding missing profile columns to users table...')
 

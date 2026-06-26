@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { UserService } from '@/services/userService'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,6 +43,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // SECURITY: creating a user lets the caller set an arbitrary role (incl. 'admin').
+  // This was previously reachable by any authenticated user (middleware does auth-only,
+  // RoleGuard is client-side), enabling privilege escalation. Require an admin session.
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
+
   try {
     const userData = await request.json()
 

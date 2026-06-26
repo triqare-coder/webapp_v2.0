@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
+// SECURITY: orchestrates the full DB bootstrap by calling other setup/fix
+// endpoints. Admin-only.
 export async function POST(request: NextRequest) {
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
   try {
     console.log('🚀 Starting comprehensive database setup...')
 

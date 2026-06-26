@@ -3,6 +3,10 @@ import { supabase } from '@/lib/supabase'
 
 // POST /api/debug/create-test-transport-user - Create a test transport company user for testing
 export async function POST(request: NextRequest) {
+  // Test tooling that writes live user rows — never reachable in production.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Disabled in production' }, { status: 403 })
+  }
   try {
     console.log('Creating test transport company user...')
 

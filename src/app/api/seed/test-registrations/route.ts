@@ -22,6 +22,10 @@ const testTransportCompanies = [
 ]
 
 export async function POST() {
+  // Seeds test patient/transport rows into the live DB — never reachable in production.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Disabled in production' }, { status: 403 })
+  }
   try {
     const results = { patients: [] as unknown[], transportCompanies: [] as unknown[], errors: [] as string[] }
 

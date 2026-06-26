@@ -7,6 +7,7 @@ import {
   DRIVER_DOCS_BUCKET,
   REQUIRED_DOCUMENT_KEYS,
   finalObjectPath,
+  isValidDocumentType,
 } from '@/lib/storage/driverDocuments'
 import {
   generateReferenceNumber,
@@ -30,6 +31,28 @@ async function moveTolerant(supabase: Supabase, from: string, to: string): Promi
   if (!error) return
   if (await objectExists(supabase, to)) return // already moved on a prior attempt
   throw new Error(`Failed to move document into place`)
+}
+
+/**
+ * A draft path is trusted ONLY when it is the exact draft object key this
+ * request's own draftId/documentType would produce:
+ *   drivers/_drafts/{draftId}/{documentType}/{filename}
+ * This binds every client-supplied path to the caller's draftId, so the move
+ * step can never be coaxed into relocating an arbitrary bucket object (IDOR /
+ * arbitrary storage-object move) such as another applicant's draft or a
+ * finalized document.
+ */
+function isOwnedDraftPath(path: string, draftId: string, documentType: string): boolean {
+  const parts = path.split('/')
+  // drivers / _drafts / {draftId} / {documentType} / {filename}
+  if (parts.length !== 5) return false
+  if (parts[0] !== 'drivers' || parts[1] !== '_drafts') return false
+  if (parts[2] !== draftId) return false
+  if (parts[3] !== documentType) return false
+  const fileName = parts[4]
+  // No path traversal / empty segment in the filename.
+  if (!fileName || fileName === '.' || fileName === '..' || fileName.includes('\\')) return false
+  return true
 }
 
 // POST /api/drivers/applications  (PUBLIC submit)
@@ -62,20 +85,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Please upload all required documents' }, { status: 400 })
     }
 
-    // 4. Mint reference number (atomic per-day sequence)
+    // 4a. Authorize every supplied document path BEFORE minting a reference or
+    // touching storage: reject unknown document types and any path not owned by
+    // this request's draftId. This closes the arbitrary-storage-object-move IDOR
+    // (a client could otherwise pass another applicant's or a finalized object
+    // path and have it relocated into its own application prefix).
+    for (const [docType, draftPaths] of Object.entries(input.documents)) {
+      if (!isValidDocumentType(docType)) {
+        return NextResponse.json({ error: 'Invalid document type' }, { status: 400 })
+      }
+      for (const draftPath of draftPaths) {
+        if (!isOwnedDraftPath(draftPath, input.draftId, docType)) {
+          return NextResponse.json({ error: 'Invalid document reference' }, { status: 400 })
+        }
+      }
+    }
+
+    // 4b. Mint reference number (atomic per-day sequence)
     const referenceNumber = await generateReferenceNumber()
     if (!isValidReferenceNumber(referenceNumber)) {
       throw new Error('Generated reference number has an unexpected format')
     }
     const supabase = createServerClient()
 
-    // 5. Move uploaded draft files into the reference-numbered prefix
+    // 5. Move uploaded draft files into the reference-numbered prefix.
+    // Track moved objects so we can roll them back if the DB insert fails,
+    // preventing orphaned (moved-but-unreferenced) storage objects.
     const finalDocuments: Record<string, string[]> = {}
+    const movedPairs: Array<{ from: string; to: string }> = []
     for (const [docType, draftPaths] of Object.entries(input.documents)) {
       finalDocuments[docType] = []
       for (const draftPath of draftPaths) {
         const dest = finalObjectPath(referenceNumber, draftPath)
         await moveTolerant(supabase, draftPath, dest)
+        movedPairs.push({ from: draftPath, to: dest })
         finalDocuments[docType].push(dest)
       }
     }
@@ -118,23 +161,48 @@ export async function POST(request: NextRequest) {
       documents: finalDocuments,
     }
 
-    const { id } = await insertApplication(row)
+    let id: string
+    try {
+      ;({ id } = await insertApplication(row))
+    } catch (insertErr) {
+      // Insert failed AFTER files were moved out of the draft prefix. Move them
+      // back so a retry can re-find them and we don't leave orphaned objects in
+      // the reference-numbered prefix.
+      for (const { from, to } of movedPairs) {
+        try {
+          await moveTolerant(supabase, to, from)
+        } catch {
+          // Best-effort rollback; the retry's moveTolerant tolerates either location.
+        }
+      }
+      throw insertErr
+    }
 
-    // 8. Transactional emails (best-effort; never block success)
+    // 8. Transactional emails (best-effort; MUST never block success — the
+    // application is already persisted above, so a failing or mis-configured
+    // email provider (e.g. a placeholder RESEND_API_KEY) must never turn a
+    // saved submission into a user-facing failure).
     const submittedAt = new Date().toISOString()
-    await sendSubmissionEmails({
-      applicationId: id,
-      referenceNumber,
-      fullName: input.full_name,
-      email: input.email,
-      phone: input.phone,
-      submittedAt,
-      summary: {
-        vehicleType: input.vehicle_type,
-        licenseType: input.license_type,
-        experienceYears: input.driving_experience_years ?? null,
-      },
-    })
+    try {
+      await sendSubmissionEmails({
+        applicationId: id,
+        referenceNumber,
+        fullName: input.full_name,
+        email: input.email,
+        phone: input.phone,
+        submittedAt,
+        summary: {
+          vehicleType: input.vehicle_type,
+          licenseType: input.license_type,
+          experienceYears: input.driving_experience_years ?? null,
+        },
+      })
+    } catch (emailErr) {
+      console.error(
+        '[applications:submit] email send failed (non-blocking):',
+        emailErr instanceof Error ? emailErr.message : 'unknown'
+      )
+    }
 
     return NextResponse.json({ reference_number: referenceNumber, id }, { status: 201 })
   } catch (err) {

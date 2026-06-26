@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
 
+// Canonical "completed" SOS state (an SOS reaching the hospital). The live
+// sos_requests table has no created_at/updated_at/severity/location/assigned_driver_id
+// columns and uses the canonical status enum (see src/lib/sosStatus.ts) — driver is
+// denormalized inline on driver_id. PostgREST nested embeds are broken DB-wide, so we
+// batch-fetch and merge in JS.
+const COMPLETED_STATUS = 'Arrived at Hospital'
+const TERMINAL_FILTER = '("Arrived at Hospital","Cancelled")'
+
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth()
@@ -14,22 +22,23 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createClient()
 
-    // Get active emergencies (SOS requests that are not completed/cancelled)
+    // Get active emergencies (SOS requests that are not in a terminal state)
     const { count: activeEmergencies } = await supabase
       .from('sos_requests')
       .select('*', { count: 'exact', head: true })
-      .not('status', 'in', '(completed,cancelled)')
+      .not('status', 'in', TERMINAL_FILTER)
 
     // Get available ambulances (mock for now - need ambulances table)
-    // For now, we'll use a calculation based on drivers
+    // For now, we'll use a calculation based on drivers.
     const { count: totalDrivers } = await supabase
       .from('drivers')
       .select('*', { count: 'exact', head: true })
 
+    // Busy = any driver not 'available' (assigned / on_trip / inactive).
     const { count: busyDrivers } = await supabase
       .from('drivers')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'busy')
+      .neq('status', 'available')
 
     const availableAmbulances = Math.max(0, (totalDrivers || 0) - (busyDrivers || 0))
 
@@ -39,27 +48,29 @@ export async function GET(request: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('status', 'available')
 
-    // Calculate average response time from recent completed SOS requests
+    // Calculate average response time from recent completed SOS requests, using the
+    // real requested_at / assigned_at timestamps.
     const { data: recentCompletedSOS } = await supabase
       .from('sos_requests')
-      .select('created_at, updated_at')
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false })
+      .select('requested_at, assigned_at')
+      .eq('status', COMPLETED_STATUS)
+      .not('assigned_at', 'is', null)
+      .order('requested_at', { ascending: false })
       .limit(50)
 
     let avgResponseTime = '4.2 min'
     if (recentCompletedSOS && recentCompletedSOS.length > 0) {
       const totalResponseTime = recentCompletedSOS.reduce((sum, sos) => {
-        const created = new Date(sos.created_at)
-        const updated = new Date(sos.updated_at)
-        const diffMinutes = (updated.getTime() - created.getTime()) / (1000 * 60)
+        const requested = new Date(sos.requested_at)
+        const assigned = new Date(sos.assigned_at!)
+        const diffMinutes = (assigned.getTime() - requested.getTime()) / (1000 * 60)
         return sum + diffMinutes
       }, 0)
       const avgMinutes = totalResponseTime / recentCompletedSOS.length
       avgResponseTime = `${avgMinutes.toFixed(1)} min`
     }
 
-    // Get completed cases today
+    // Get completed cases today (by completed_at)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const tomorrow = new Date(today)
@@ -68,53 +79,47 @@ export async function GET(request: NextRequest) {
     const { count: completedToday } = await supabase
       .from('sos_requests')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'completed')
-      .gte('updated_at', today.toISOString())
-      .lt('updated_at', tomorrow.toISOString())
+      .eq('status', COMPLETED_STATUS)
+      .gte('completed_at', today.toISOString())
+      .lt('completed_at', tomorrow.toISOString())
 
-    // Get pending assignments (SOS requests without assigned drivers)
+    // Get pending assignments (active SOS requests with no driver assigned inline)
     const { count: pendingAssignments } = await supabase
       .from('sos_requests')
       .select('*', { count: 'exact', head: true })
-      .is('assigned_driver_id', null)
-      .not('status', 'in', '(completed,cancelled)')
+      .is('driver_id', null)
+      .not('status', 'in', TERMINAL_FILTER)
 
-    // Get recent active cases with details
+    // Get recent active cases with details (real columns + inline driver). Embeds are
+    // broken DB-wide, so batch-fetch the assigned driver's user identity and merge.
     const { data: activeCases } = await supabase
       .from('sos_requests')
-      .select(`
-        id,
-        patient_name,
-        patient_phone,
-        location,
-        severity,
-        status,
-        created_at,
-        assigned_driver_id,
-        drivers (
-          id,
-          first_name,
-          last_name,
-          phone_number
-        )
-      `)
-      .not('status', 'in', '(completed,cancelled)')
-      .order('created_at', { ascending: false })
+      .select('id, patient_name, patient_phone, location_lat, location_lon, status, requested_at, driver_id, driver_name, driver_phone')
+      .not('status', 'in', TERMINAL_FILTER)
+      .order('requested_at', { ascending: false })
       .limit(10)
 
-    // Get critical cases
-    const { count: criticalCases } = await supabase
-      .from('sos_requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('severity', 'critical')
-      .not('status', 'in', '(completed,cancelled)')
+    const activeCaseDriverIds = [...new Set((activeCases || []).map(c => c.driver_id).filter(Boolean))]
+    const { data: activeCaseDrivers } = activeCaseDriverIds.length > 0
+      ? await supabase.from('users').select('id, full_name, phone').in('id', activeCaseDriverIds)
+      : { data: [] as any[] }
+    const activeCaseDriverById = Object.fromEntries((activeCaseDrivers || []).map((u: any) => [u.id, u]))
 
-    // Get high priority cases
-    const { count: highPriorityCases } = await supabase
-      .from('sos_requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('severity', 'high')
-      .not('status', 'in', '(completed,cancelled)')
+    const activeCasesTransformed = (activeCases || []).map((c: any) => ({
+      id: c.id,
+      patient_name: c.patient_name,
+      patient_phone: c.patient_phone,
+      latitude: c.location_lat,
+      longitude: c.location_lon,
+      status: c.status,
+      requested_at: c.requested_at,
+      driver_id: c.driver_id,
+      driver: c.driver_id ? {
+        id: c.driver_id,
+        name: c.driver_name || activeCaseDriverById[c.driver_id]?.full_name || null,
+        phone: c.driver_phone || activeCaseDriverById[c.driver_id]?.phone || null,
+      } : null,
+    }))
 
     const stats = {
       activeEmergencies: activeEmergencies || 0,
@@ -123,9 +128,11 @@ export async function GET(request: NextRequest) {
       avgResponseTime,
       completedToday: completedToday || 0,
       pendingAssignments: pendingAssignments || 0,
-      criticalCases: criticalCases || 0,
-      highPriorityCases: highPriorityCases || 0,
-      activeCases: activeCases || [],
+      // severity/priority is not a column on the live sos_requests table; surface 0
+      // rather than 500 on a non-existent column.
+      criticalCases: 0,
+      highPriorityCases: 0,
+      activeCases: activeCasesTransformed,
       totalDrivers: totalDrivers || 0
     }
 
@@ -136,9 +143,9 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching ERT dashboard stats:', error)
     return NextResponse.json(
-      { 
+      {
         error: error instanceof Error ? error.message : 'Failed to fetch ERT dashboard stats',
-        success: false 
+        success: false
       },
       { status: 500 }
     )

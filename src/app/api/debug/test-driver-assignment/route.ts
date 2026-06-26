@@ -3,6 +3,10 @@ import { supabase } from '@/lib/supabase'
 import { SOSService } from '@/services/sosService'
 
 export async function POST(request: NextRequest) {
+  // Test tooling that mutates live SOS/driver rows — never reachable in production.
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Disabled in production' }, { status: 403 })
+  }
   try {
     console.log('🧪 Testing driver assignment...')
 

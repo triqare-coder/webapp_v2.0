@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/auth/requireAdmin'
 
+// SECURITY: this debug endpoint runs raw SQL (incl. ALTER TABLE ... DISABLE ROW LEVEL
+// SECURITY on the emergency-request table). The middleware still allow-lists /api/debug
+// as public, so this handler-level guard is the protection: blocked in production and
+// admin-only otherwise.
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Disabled in production' }, { status: 403 })
+  }
+
+  const guard = await requireAdmin()
+  if (guard.error) return guard.error
+
   try {
     console.log('🔧 Attempting to fix SOS RLS policies...')
 
