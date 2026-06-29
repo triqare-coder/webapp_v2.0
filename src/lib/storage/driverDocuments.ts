@@ -38,11 +38,11 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
 
 export const DOCUMENT_TYPE_KEYS = DOCUMENT_TYPES.map((d) => d.key)
 /**
- * Documents required for a valid submission. Currently empty — all KYC documents
- * are optional for now (applicants may submit without uploading anything). Add
- * keys here to re-enforce mandatory uploads later.
+ * Documents required for a valid submission. Per spec TQWEB01 AC13/AC21 every
+ * KYC document is mandatory — the applicant must upload at least one file for
+ * each type before the form can be submitted.
  */
-export const REQUIRED_DOCUMENT_KEYS: string[] = []
+export const REQUIRED_DOCUMENT_KEYS: string[] = [...DOCUMENT_TYPE_KEYS]
 
 export function isValidDocumentType(key: string): boolean {
   return DOCUMENT_TYPE_KEYS.includes(key)

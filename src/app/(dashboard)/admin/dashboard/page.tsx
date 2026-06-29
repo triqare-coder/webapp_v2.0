@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useUser } from '@clerk/nextjs'
 import { RoleGuard } from '@/components/auth/RoleGuard'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { LoadingSkeleton } from '@/components/ui/loading-skeleton'
 import { DownloadAppButton } from '@/components/DownloadAppButton'
@@ -19,7 +18,7 @@ import {
   Database,
   Settings,
   BarChart3,
-  UserCheck
+  UserCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -44,7 +43,33 @@ interface AdminDashboardStats {
   }
 }
 
+// Soft Healthcare palette helpers
+const TINT = {
+  navy: 'bg-[#ccd9e6] text-[#003366]',
+  red: 'bg-[#f5cccc] text-[#cc3333]',
+  emerald: 'bg-emerald-100 text-emerald-600',
+  amber: 'bg-amber-100 text-amber-600',
+} as const
+
+const CARD = 'rounded-3xl bg-white shadow-[0_8px_30px_rgba(0,51,102,0.05)]'
+
+function StatCard({ label, value, sub, icon: Icon, tint }: {
+  label: string; value: React.ReactNode; sub: string; icon: typeof Users; tint: keyof typeof TINT
+}) {
+  return (
+    <div className={`${CARD} p-5`}>
+      <div className={`mb-4 flex h-11 w-11 items-center justify-center rounded-2xl ${TINT[tint]}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="text-3xl font-bold text-slate-900">{value}</div>
+      <div className="mt-1 text-sm font-medium text-slate-600">{label}</div>
+      <div className="mt-0.5 text-xs text-slate-400">{sub}</div>
+    </div>
+  )
+}
+
 export default function AdminDashboardPage() {
+  const { user } = useUser()
   const [stats, setStats] = useState<AdminDashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -84,28 +109,28 @@ export default function AdminDashboardPage() {
       action: 'System Status',
       details: `${stats?.recentActivity.newUsers || 0} new users registered today`,
       timestamp: 'Today',
-      type: 'user'
+      type: 'user',
     },
     {
       id: 2,
       action: 'Emergency Activity',
       details: `${stats?.recentActivity.newSOS || 0} new SOS requests in last 24 hours`,
       timestamp: 'Last 24 hours',
-      type: 'emergency'
+      type: 'emergency',
     },
     {
       id: 3,
       action: 'System Health',
       details: `System uptime: ${stats?.systemUptime || 'N/A'}`,
       timestamp: 'Current',
-      type: 'system'
-    }
+      type: 'system',
+    },
   ]
 
   if (loading) {
     return (
       <RoleGuard allowedRoles={['admin']}>
-        <div className="p-6 space-y-6">
+        <div className="space-y-6">
           <LoadingSkeleton />
         </div>
       </RoleGuard>
@@ -115,257 +140,141 @@ export default function AdminDashboardPage() {
   if (error || !stats) {
     return (
       <RoleGuard allowedRoles={['admin']}>
-        <div className="p-6 space-y-6">
-          <div className="text-center py-12">
-            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to Load Dashboard</h2>
-            <p className="text-gray-600 mb-4">{error}</p>
-            <Button onClick={fetchDashboardStats}>
-              Try Again
-            </Button>
+        <div className={`${CARD} mx-auto mt-6 max-w-md p-10 text-center`}>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f5cccc]">
+            <AlertTriangle className="h-7 w-7 text-[#cc3333]" />
           </div>
+          <h2 className="mb-2 text-xl font-bold text-slate-900">Failed to Load Dashboard</h2>
+          <p className="mb-5 text-sm text-slate-500">{error}</p>
+          <Button onClick={fetchDashboardStats} className="rounded-full bg-[#cc3333] hover:bg-[#b32d2d]">
+            Try Again
+          </Button>
         </div>
       </RoleGuard>
     )
   }
 
+  const firstName = user?.firstName
+
   return (
     <RoleGuard allowedRoles={['admin']}>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+      <div className="space-y-6">
+        {/* Header / greeting */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              🛡️ Admin Dashboard
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              Welcome back{firstName ? `, ${firstName}` : ''}
             </h1>
-            <p className="text-gray-600">
-              System overview and administrative controls
-            </p>
+            <p className="mt-1 text-sm text-slate-500">A live view of the response network today.</p>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center gap-3">
             <DownloadAppButton />
-            <Badge className="bg-red-100 text-red-800">
-              <Shield className="h-3 w-3 mr-1" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ccd9e6]/60 px-3 py-1.5 text-xs font-semibold text-[#003366]">
+              <Shield className="h-3.5 w-3.5" />
               System Administrator
-            </Badge>
+            </span>
           </div>
         </div>
 
-
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalUsers}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats.recentActivity.newUsers} new today
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Hospitals</CardTitle>
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalHospitals}</div>
-              <p className="text-xs text-muted-foreground">
-                Across the network
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Emergencies</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-600">{stats.activeEmergencies}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats.activeEmergencies > 0 ? 'Requires attention' : 'All clear'}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">System Uptime</CardTitle>
-              <Activity className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.systemUptime}</div>
-              <p className="text-xs text-muted-foreground">
-                Last 30 days
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Avg Response Time</CardTitle>
-              <Clock className="h-4 w-4 text-blue-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{stats.avgResponseTime}</div>
-              <p className="text-xs text-muted-foreground">
-                Recent average
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Drivers</CardTitle>
-              <UserCheck className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalDrivers}</div>
-              <p className="text-xs text-muted-foreground">
-                Registered drivers
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">System Alerts</CardTitle>
-              <TrendingUp className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.systemAlerts.length}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats.systemAlerts.length === 0 ? 'All systems operational' : 'Active alerts'}
-              </p>
-            </CardContent>
-          </Card>
+        {/* Stats */}
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="Total Users" value={stats.totalUsers} sub={`${stats.recentActivity.newUsers} new today`} icon={Users} tint="navy" />
+          <StatCard label="Hospitals" value={stats.totalHospitals} sub="Across the network" icon={Building2} tint="navy" />
+          <StatCard label="Active Emergencies" value={stats.activeEmergencies} sub={stats.activeEmergencies > 0 ? 'Requires attention' : 'All clear'} icon={AlertTriangle} tint="red" />
+          <StatCard label="System Uptime" value={stats.systemUptime} sub="Last 30 days" icon={Activity} tint="emerald" />
+          <StatCard label="Avg Response Time" value={stats.avgResponseTime} sub="Recent average" icon={Clock} tint="amber" />
+          <StatCard label="Total Drivers" value={stats.totalDrivers} sub="Registered drivers" icon={UserCheck} tint="navy" />
+          <StatCard label="System Alerts" value={stats.systemAlerts.length} sub={stats.systemAlerts.length === 0 ? 'All systems operational' : 'Active alerts'} icon={TrendingUp} tint="emerald" />
         </div>
 
         {/* System Alerts */}
         {stats.systemAlerts.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-orange-500" />
-                System Alerts
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {stats.systemAlerts.map((alert) => (
-                  <div key={alert.id} className="flex items-center space-x-4 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                    <div className="flex-shrink-0">
-                      <AlertTriangle className={`h-5 w-5 ${
-                        alert.severity === 'high' ? 'text-red-500' :
-                        alert.severity === 'medium' ? 'text-orange-500' :
-                        'text-blue-500'
-                      }`} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{alert.type.toUpperCase()}</p>
-                      <p className="text-sm text-gray-600">{alert.message}</p>
-                      <p className="text-xs text-gray-500">{alert.timestamp}</p>
-                    </div>
-                    <Badge variant={alert.severity === 'high' ? 'destructive' : 'secondary'}>
-                      {alert.severity}
-                    </Badge>
+          <div className={`${CARD} p-6`}>
+            <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100"><AlertTriangle className="h-4 w-4 text-amber-600" /></span>
+              System Alerts
+            </h2>
+            <div className="space-y-2.5">
+              {stats.systemAlerts.map((alert) => (
+                <div key={alert.id} className="flex items-center gap-4 rounded-2xl bg-slate-50 px-4 py-3">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${alert.severity === 'high' ? TINT.red : alert.severity === 'medium' ? TINT.amber : TINT.navy}`}>
+                    <AlertTriangle className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900">{alert.type.toUpperCase()}</p>
+                    <p className="truncate text-xs text-slate-500">{alert.message}</p>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Recent Activities */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5" />
-              System Overview
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentActivities.map((activity) => (
-                <div key={activity.id} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-shrink-0">
-                    {activity.type === 'user' && <Users className="h-5 w-5 text-blue-500" />}
-                    {activity.type === 'system' && <Settings className="h-5 w-5 text-gray-500" />}
-                    {activity.type === 'emergency' && <AlertTriangle className="h-5 w-5 text-red-500" />}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{activity.action}</p>
-                    <p className="text-sm text-gray-600">{activity.details}</p>
-                    <p className="text-xs text-gray-500">{activity.timestamp}</p>
-                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${alert.severity === 'high' ? TINT.red : alert.severity === 'medium' ? TINT.amber : 'bg-slate-200 text-slate-600'}`}>
+                    {alert.severity}
+                  </span>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        )}
 
-        {/* Role Distribution */}
-        {Object.keys(stats.roleDistribution).length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                User Role Distribution
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {/* System Overview + Role distribution */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <div className={`${CARD} p-6 lg:col-span-2`}>
+            <h2 className="mb-4 text-base font-bold text-slate-900">System Overview</h2>
+            <div className="space-y-2.5">
+              {recentActivities.map((activity) => (
+                <div key={activity.id} className="flex items-center gap-4 rounded-2xl bg-slate-50 px-4 py-3">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${activity.type === 'emergency' ? TINT.red : activity.type === 'system' ? TINT.navy : TINT.navy}`}>
+                    {activity.type === 'user' && <Users className="h-4 w-4" />}
+                    {activity.type === 'system' && <Settings className="h-4 w-4" />}
+                    {activity.type === 'emergency' && <AlertTriangle className="h-4 w-4" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900">{activity.action}</p>
+                    <p className="truncate text-xs text-slate-500">{activity.details}</p>
+                  </div>
+                  <span className="text-xs text-slate-400">{activity.timestamp}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className={`${CARD} p-6`}>
+            <h2 className="mb-4 text-base font-bold text-slate-900">User Roles</h2>
+            {Object.keys(stats.roleDistribution).length > 0 ? (
+              <div className="space-y-3.5">
                 {Object.entries(stats.roleDistribution).map(([role, count]) => (
-                  <div key={role} className="text-center p-3 bg-gray-50 rounded-lg">
-                    <div className="text-2xl font-bold text-gray-900">{count}</div>
-                    <div className="text-sm text-gray-600 capitalize">{role.replace('_', ' ')}</div>
+                  <div key={role} className="flex items-center justify-between">
+                    <span className="text-sm capitalize text-slate-500">{role.replace('_', ' ')}</span>
+                    <span className="text-lg font-bold text-slate-900">{count}</span>
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            ) : (
+              <p className="text-sm text-slate-400">No role data available.</p>
+            )}
+          </div>
+        </div>
 
-        {/* Admin Quick Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Administrative Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Link href="/admin/users">
-                <Button variant="outline" className="h-20 flex-col w-full">
-                  <Users className="h-6 w-6 mb-2" />
-                  Manage Users
-                </Button>
+        {/* Quick actions */}
+        <div className={`${CARD} p-6`}>
+          <h2 className="mb-4 text-base font-bold text-slate-900">Administrative Actions</h2>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {[
+              { href: '/admin/users', label: 'Manage Users', icon: Users },
+              { href: '/admin/hospitals', label: 'Hospital Settings', icon: Building2 },
+              { href: '/admin/reports', label: 'System Reports', icon: BarChart3 },
+              { href: '/admin/transport-companies', label: 'Data Management', icon: Database },
+            ].map((a) => (
+              <Link
+                key={a.href}
+                href={a.href}
+                className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-6 text-center text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:border-[#003366]/20 hover:shadow-md"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#ccd9e6]">
+                  <a.icon className="h-5 w-5 text-[#003366]" />
+                </span>
+                {a.label}
               </Link>
-              <Link href="/admin/hospitals">
-                <Button variant="outline" className="h-20 flex-col w-full">
-                  <Building2 className="h-6 w-6 mb-2" />
-                  Hospital Settings
-                </Button>
-              </Link>
-              <Link href="/admin/reports">
-                <Button variant="outline" className="h-20 flex-col w-full">
-                  <BarChart3 className="h-6 w-6 mb-2" />
-                  System Reports
-                </Button>
-              </Link>
-              <Link href="/admin/transport-companies">
-                <Button variant="outline" className="h-20 flex-col w-full">
-                  <Database className="h-6 w-6 mb-2" />
-                  Data Management
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+            ))}
+          </div>
+        </div>
       </div>
     </RoleGuard>
   )

@@ -9,11 +9,12 @@ export default function DashboardLayout({
 }) {
   return (
     <DashboardAuthGuard>
-      <div className="flex min-h-screen bg-gray-50">
+      {/* Soft Healthcare shell: calm gradient canvas + floating rounded sidebar */}
+      <div className="flex min-h-screen gap-4 bg-gradient-to-b from-[#eef2f7] to-[#f7f9fb] p-4">
         <Sidebar />
-        <main className="flex-1 overflow-auto">
+        <main className="flex min-w-0 flex-1 flex-col overflow-auto">
           <AnnouncementBanner />
-          <div className="p-6">
+          <div className="mx-auto w-full max-w-7xl px-1 py-1">
             {children}
           </div>
         </main>

@@ -36,6 +36,16 @@ export function DashboardAuthGuard({ children }: DashboardAuthGuardProps) {
         return
       }
 
+      // Patient and driver are mobile-only — they have no web dashboard.
+      // Send them straight to the mobile-app page instead of rendering a
+      // half-built dashboard (avoids the dead nav links + wrong sidebar).
+      if (role === 'patient' || role === 'driver') {
+        if (pathname !== '/mobile-app-required') {
+          router.push('/mobile-app-required')
+        }
+        return
+      }
+
       // Check if user has access to current path
       if (!hasAccessToPath(role, pathname)) {
         // User doesn't have access, redirect to their default dashboard

@@ -85,6 +85,7 @@ export default function DriverApplyPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [referenceNumber, setReferenceNumber] = useState<string>('')
+  const [errorDetail, setErrorDetail] = useState<string | null>(null)
   const [step, setStep] = useState<Step>('details')
 
   const uploads = useDocumentUpload(draftId)
@@ -118,6 +119,7 @@ export default function DriverApplyPage() {
   const doSubmit = async () => {
     setSubmitting(true)
     setTopError(null)
+    setErrorDetail(null)
     try {
       const res = await fetch('/api/drivers/applications', {
         method: 'POST',
@@ -133,12 +135,15 @@ export default function DriverApplyPage() {
         error?: string
       }
       if (!res.ok || !data.reference_number) {
-        throw new Error(data.error || 'Submission failed')
+        throw new Error(data.error || 'Submission failed. Please try again.')
       }
       setReferenceNumber(data.reference_number)
       setPhase('success')
       window.scrollTo({ top: 0 })
-    } catch {
+    } catch (err) {
+      // Surface the server's specific reason (e.g. rate-limit or validation)
+      // instead of only the generic screen, so failures are self-explanatory.
+      setErrorDetail(err instanceof Error ? err.message : null)
       setPhase('error')
       window.scrollTo({ top: 0 })
     } finally {
@@ -237,6 +242,11 @@ export default function DriverApplyPage() {
           Something went wrong while submitting your application. Your details and uploaded
           documents are safe — please try again.
         </p>
+        {errorDetail && (
+          <p className="rounded-md bg-[#f5f5f5] px-3 py-2 text-xs text-[#777777]">
+            {errorDetail}
+          </p>
+        )}
         <p className="text-sm text-[#666666]">
           If the problem persists, contact{' '}
           <a className="font-medium text-[#cc3333] hover:underline" href="mailto:support@triqare.in">
@@ -247,7 +257,7 @@ export default function DriverApplyPage() {
         {/* Returns to the form with all fields + uploaded documents still in
             React state (re-populated, no re-entry); the user reviews and resubmits. */}
         <Button
-          onClick={() => { setTopError(null); setPhase('form'); window.scrollTo({ top: 0 }) }}
+          onClick={() => { setTopError(null); setErrorDetail(null); setPhase('form'); window.scrollTo({ top: 0 }) }}
           className="bg-[#cc3333] text-white hover:bg-[#b32d2d]"
         >
           Try Again
@@ -398,7 +408,7 @@ export default function DriverApplyPage() {
           </div>
           {textField('vehicle_make_model', 'Make and Model', { placeholder: 'Optional — e.g. Force Traveller' })}
           {textField('vehicle_year', 'Year of Manufacture', { type: 'number', placeholder: 'Optional — e.g. 2022' })}
-          {textField('ambulance_permit_number', 'Ambulance Permit Number', { placeholder: 'Optional — permit number' })}
+          {textField('ambulance_permit_number', 'Ambulance Permit Number', { required: true, placeholder: 'Permit number' })}
         </CardContent>
       </Card>
 
@@ -416,9 +426,9 @@ export default function DriverApplyPage() {
           {textField('license_number', 'Driving License Number', { required: true, placeholder: 'License number' })}
           {textField('license_expiry', 'License Expiry Date', { required: true, type: 'date' })}
           <div id="field-license_type" className="space-y-1.5">
-            <Label htmlFor="license_type" className="text-sm font-medium text-[#333333]">License Type</Label>
+            <Label htmlFor="license_type" className="text-sm font-medium text-[#333333]">License Type<span className="ml-0.5 text-[#cc3333]">*</span></Label>
             <Select value={form.license_type} onValueChange={(v) => set('license_type', v)}>
-              <SelectTrigger id="license_type" className={errors.license_type ? 'border-[#cc3333]' : ''}><SelectValue placeholder="Optional — select type" /></SelectTrigger>
+              <SelectTrigger id="license_type" className={errors.license_type ? 'border-[#cc3333]' : ''}><SelectValue placeholder="Select type" /></SelectTrigger>
               <SelectContent>
                 {LICENSE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
@@ -484,7 +494,7 @@ export default function DriverApplyPage() {
             </span>
             <span className="font-semibold text-slate-900">Document upload</span>
           </CardTitle>
-          <p className="mt-1 text-xs text-[#666666]">All documents are optional for now. Max 10 MB per file.</p>
+          <p className="mt-1 text-xs text-[#666666]">All documents are required. Max 10 MB per file.</p>
         </CardHeader>
         <CardContent className="space-y-3">
           {DOCUMENT_TYPES.map((def) => (

@@ -10,6 +10,12 @@ import { UserRole } from '@/types'
 import { SignOutButton } from '@clerk/nextjs'
 import { Logo } from '@/components/ui/logo'
 
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'Administrator',
+  ert: 'Emergency Response',
+  transport_company: 'Transport Company',
+}
+
 export function Sidebar() {
   const pathname = usePathname()
   const [expandedItems, setExpandedItems] = useState<string[]>([])
@@ -19,6 +25,8 @@ export function Sidebar() {
     if (pathname.startsWith('/admin')) return 'admin'
     if (pathname.startsWith('/erteam')) return 'ert'
     if (pathname.startsWith('/transport')) return 'transport_company'
+    if (pathname.startsWith('/patient')) return 'patient'
+    if (pathname.startsWith('/driver')) return 'driver'
     return 'admin' // default
   }
 
@@ -26,9 +34,7 @@ export function Sidebar() {
 
   const toggleExpanded = (href: string) => {
     setExpandedItems(prev =>
-      prev.includes(href)
-        ? prev.filter(item => item !== href)
-        : [...prev, href]
+      prev.includes(href) ? prev.filter(item => item !== href) : [...prev, href]
     )
   }
 
@@ -45,38 +51,32 @@ export function Sidebar() {
       <div key={item.href}>
         <div
           className={cn(
-            "flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer",
-            level > 0 && "ml-4 border-l-2 border-gray-200 pl-4",
+            "group flex items-center justify-between rounded-2xl px-3.5 py-2.5 text-sm transition-colors cursor-pointer",
+            level > 0 && "ml-3 py-2",
             isActive
-              ? "bg-blue-100 text-blue-700 border-blue-200"
-              : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+              ? "bg-[#003366] font-semibold text-white shadow-sm"
+              : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
           )}
           onClick={() => {
-            if (hasChildren) {
-              toggleExpanded(item.href)
-            }
+            if (hasChildren) toggleExpanded(item.href)
           }}
         >
           <Link
             href={hasChildren ? '#' : item.href}
-            className="flex items-center flex-1"
+            className="flex flex-1 items-center"
             onClick={(e) => hasChildren && e.preventDefault()}
           >
-            <Icon className="mr-3 h-4 w-4" />
-            <span>{item.title}</span>
+            <Icon className={cn("mr-3 h-[18px] w-[18px] shrink-0", isActive ? "text-white" : "text-slate-400 group-hover:text-slate-600")} />
+            <span className="flex-1">{item.title}</span>
             {item.badge && (
-              <span className="ml-2 px-2 py-0.5 text-xs bg-red-100 text-red-800 rounded-full">
+              <span className={cn("ml-2 rounded-full px-2 text-[11px] font-bold", isActive ? "bg-white/20 text-white" : "bg-[#f5cccc] text-[#cc3333]")}>
                 {item.badge}
               </span>
             )}
           </Link>
           {hasChildren && (
-            <div className="ml-2">
-              {isExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
+            <div className={cn("ml-2", isActive ? "text-white" : "text-slate-400")}>
+              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </div>
           )}
         </div>
@@ -91,53 +91,37 @@ export function Sidebar() {
   }
 
   return (
-    <div className="w-64 bg-white shadow-lg border-r border-gray-200">
-      <div className="p-6">
-        {/* Logo/Brand */}
-        <div className="mb-8 flex justify-center">
-          <Logo size="lg" showText={false} />
-        </div>
-
-        {/* Role Badge */}
-        <div className="mb-6 p-3 bg-gray-50 rounded-lg">
-          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-            Current Role
-          </div>
-          <div className="text-sm font-semibold text-gray-900">
-            {role === 'admin' && '🛡️ System Administrator'}
-            {role === 'ert' && '🚨 Emergency Response Team'}
-            {role === 'transport_company' && '🚛 Transport Company'}
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <nav className="space-y-2">
-          {navigationItems.map((item) => renderNavItem(item))}
-        </nav>
-
-        {/* User Profile */}
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <Link href={profileNavItem.href} className="flex items-center hover:bg-gray-50 p-2 rounded-lg transition-colors">
-            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-              <User className="h-4 w-4 text-gray-600" />
-            </div>
-            <div className="ml-3">
-              <div className="text-sm font-medium text-gray-900">{profileNavItem.title}</div>
-              <div className="text-xs text-gray-500">{profileNavItem.description}</div>
-            </div>
-          </Link>
-        </div>
-
-        {/* Logout Button */}
-        <div className="mt-4">
-          <SignOutButton>
-            <button className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 hover:text-red-800 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
-            </button>
-          </SignOutButton>
-        </div>
+    <aside className="flex w-60 shrink-0 flex-col rounded-3xl bg-white p-5 shadow-[0_8px_30px_rgba(0,51,102,0.06)]">
+      {/* Brand */}
+      <div className="mb-6 flex items-center gap-2.5 px-1">
+        <Logo size="xs" showText={false} />
+        <span className="text-[15px] font-bold tracking-tight text-slate-900">triqare</span>
       </div>
-    </div>
+
+      {/* Navigation */}
+      <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Menu</div>
+      <nav className="space-y-1.5">
+        {navigationItems.map((item) => renderNavItem(item))}
+      </nav>
+
+      {/* Account card + sign out */}
+      <div className="mt-auto space-y-2 pt-5">
+        <Link href={profileNavItem.href} className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 transition hover:bg-slate-100">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#ccd9e6]">
+            <User className="h-4 w-4 text-[#003366]" />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-slate-900">{profileNavItem.title}</div>
+            <div className="truncate text-xs text-slate-500">{ROLE_LABEL[role] ?? 'Member'}</div>
+          </div>
+        </Link>
+        <SignOutButton>
+          <button className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-500 transition hover:border-[#cc3333]/30 hover:bg-[#f5cccc]/30 hover:text-[#cc3333] focus:outline-none focus:ring-2 focus:ring-[#cc3333]/30">
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </button>
+        </SignOutButton>
+      </div>
+    </aside>
   )
 }

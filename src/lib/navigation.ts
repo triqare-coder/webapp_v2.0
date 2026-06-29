@@ -29,7 +29,8 @@ import {
   Shield,
   User,
   Upload,
-  Megaphone
+  Megaphone,
+  Download
 } from 'lucide-react'
 
 export interface NavItem {
@@ -51,6 +52,20 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
       icon: LayoutDashboard,
       roles: ['admin'],
       description: 'System overview and analytics'
+    },
+    {
+      title: 'SOS Dashboard',
+      href: '/sos',
+      icon: AlertTriangle,
+      roles: ['admin'],
+      description: 'Live emergency SOS requests'
+    },
+    {
+      title: 'Driver Applications',
+      href: '/admin/driver-applications',
+      icon: FileText,
+      roles: ['admin'],
+      description: 'Review QSoS ambulance partner KYC applications'
     },
     {
       title: 'My Profile',
@@ -84,7 +99,12 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
           icon: Shield,
           roles: ['admin']
         },
-
+        {
+          title: 'Role Management',
+          href: '/admin/users/roles',
+          icon: Shield,
+          roles: ['admin']
+        },
       ]
     },
     {
@@ -113,9 +133,9 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
           roles: ['admin']
         },
         {
-          title: 'Driver Applications',
-          href: '/admin/driver-applications',
-          icon: FileText,
+          title: 'Ambulances',
+          href: '/ambulances',
+          icon: Truck,
           roles: ['admin']
         },
         {
@@ -128,6 +148,12 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
           title: 'Database Management',
           href: '/admin/database',
           icon: Database,
+          roles: ['admin']
+        },
+        {
+          title: 'System Monitoring',
+          href: '/admin/monitoring',
+          icon: Activity,
           roles: ['admin']
         },
         {
@@ -221,6 +247,12 @@ export const navigationConfig: Record<UserRole, NavItem[]> = {
           title: 'Performance Analytics',
           href: '/admin/analytics',
           icon: TrendingUp,
+          roles: ['admin']
+        },
+        {
+          title: 'Data Export',
+          href: '/admin/export',
+          icon: Download,
           roles: ['admin']
         }
       ]

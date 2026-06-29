@@ -84,7 +84,11 @@ Our team is reviewing your documents and will get back to you within 48 hours. I
 Best regards,
 TriQare Team`
 
-  await send({
+  // Applicant confirmation + admin notification go out concurrently. Each send()
+  // swallows its own errors, so Promise.all never rejects and never blocks success.
+  const sends: Promise<void>[] = []
+
+  sends.push(send({
     to: email,
     subject: `QSoS Driver Application Received - ${referenceNumber}`,
     text: confirmText,
@@ -97,7 +101,7 @@ TriQare Team`
       <p>Our team is reviewing your documents and will get back to you within <strong>48 hours</strong>.</p>
       <p>Questions? Contact us at <a href="mailto:${SUPPORT}" style="color:#cc3333">${SUPPORT}</a>.</p>
       <p>Best regards,<br>TriQare Team</p>`),
-  })
+  }))
 
   // Admin notification — recipient(s) from ADMIN_NOTIFICATION_EMAIL (comma-separated
   // list supported, e.g. "info@triqare.com,triqare@gmail.com"); final address TBD by TriQare.
@@ -114,7 +118,7 @@ TriQare Team`
     ]
       .filter(Boolean)
       .join(' · ')
-    await send({
+    sends.push(send({
       to: recipients,
       subject: `New Driver Application Received - ${fullName} - ${submittedAt.slice(0, 10)}`,
       text: `New driver application.
@@ -138,8 +142,10 @@ View full application: ${reviewLink}`,
           ${summaryLine ? `<li>Summary: ${esc(summaryLine)}</li>` : ''}
         </ul>
         <p><a href="${reviewLink}" style="background:#cc3333;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">View full application</a></p>`),
-    })
+    }))
   }
+
+  await Promise.all(sends)
 }
 
 // ── Approval ────────────────────────────────────────────────────────────────

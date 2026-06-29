@@ -71,14 +71,6 @@ const optionalInt = (min: number, max: number) =>
     z.coerce.number().int().min(min).max(max).optional(),
   )
 
-// Empty string / null → undefined, then validate against the enum (optional).
-// Lets a <Select> sit at its placeholder ('') and still count as "not provided".
-const optionalEnum = <T extends readonly [string, ...string[]]>(values: T) =>
-  z.preprocess(
-    (v) => (v === '' || v === null || v === undefined ? undefined : v),
-    z.enum(values).optional(),
-  )
-
 export const driverApplicationSchema = z.object({
   // Personal
   full_name: requiredString(),
@@ -101,7 +93,7 @@ export const driverApplicationSchema = z.object({
   vehicle_type: z.enum(VEHICLE_TYPES, { message: VALIDATION_MESSAGES.required }),
   vehicle_make_model: optionalString,
   vehicle_year: optionalInt(1900, 2100),
-  ambulance_permit_number: optionalString,
+  ambulance_permit_number: requiredString(),
 
   // License
   license_number: requiredString(),
@@ -109,7 +101,7 @@ export const driverApplicationSchema = z.object({
     (v) => isFutureDate(v),
     VALIDATION_MESSAGES.licenseExpired,
   ),
-  license_type: optionalEnum(LICENSE_TYPES),
+  license_type: z.enum(LICENSE_TYPES, { message: VALIDATION_MESSAGES.required }),
 
   // Additional
   driving_experience_years: optionalInt(0, 80),

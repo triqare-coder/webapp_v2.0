@@ -241,34 +241,37 @@ export default function SOSPage() {
       {/* Emergency Cases Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Emergency Cases ({filteredCases.length})</CardTitle>
+          <CardTitle className="flex items-center gap-2.5 text-base font-bold text-slate-900">
+            Emergency Cases
+            <span className="rounded-full bg-[#ccd9e6]/60 px-2.5 py-0.5 text-xs font-semibold text-[#003366]">{filteredCases.length}</span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Patient</TableHead>
-                  <TableHead>Case ID</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Assigned Driver</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                <TableRow className="bg-slate-50 hover:bg-slate-50">
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Patient</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Case ID</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assigned Driver</TableHead>
+                  <TableHead className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Time</TableHead>
+                  <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredCases.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={6} className="text-center py-10 text-slate-400">
                       No emergency cases found matching your search criteria
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredCases.map((case_) => (
-                      <TableRow key={case_.id}>
+                      <TableRow key={case_.id} className="hover:bg-slate-50/70">
                         <TableCell>
                           <div>
-                            <div className="font-medium">
+                            <div className="font-semibold text-[#003366]">
                               {case_.patient?.full_name || 'Unknown Patient'}
                             </div>
                             <div className="text-sm text-gray-500 flex items-center">
@@ -291,7 +294,7 @@ export default function SOSPage() {
                           <div className="space-y-1">
                             {case_.assigned_driver ? (
                               <div className="flex items-center text-xs">
-                                <User className="h-3 w-3 mr-1 text-blue-600" />
+                                <User className="h-3 w-3 mr-1 text-[#003366]" />
                                 <span>{case_.assigned_driver.full_name}</span>
                               </div>
                             ) : (
