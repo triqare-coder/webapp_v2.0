@@ -16,7 +16,6 @@ export async function POST(req: NextRequest) {
       city,
       state,
       zipCode,
-      country,
       emergencyContactName,
       emergencyContactPhone,
       emergencyContactRelationship,
@@ -96,7 +95,9 @@ export async function POST(req: NextRequest) {
           city,
           state,
           zip_code: zipCode,
-          country,
+          // Business rule: main patients are India-only. Hard-lock server-side so the
+          // stored country can't be anything else regardless of the submitted value.
+          country: 'India',
           emergency_contact_name: emergencyContactName,
           emergency_contact_phone: emergencyContactPhone,
           emergency_contact_relationship: emergencyContactRelationship,

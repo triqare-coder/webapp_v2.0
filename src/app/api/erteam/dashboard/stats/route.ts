@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
+import { SOSRequestService } from '@/services/sosRequestService'
 
 // Canonical "completed" SOS state (an SOS reaching the hospital). The live
 // sos_requests table has no created_at/updated_at/severity/location/assigned_driver_id
@@ -19,6 +20,12 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       )
     }
+
+    // Reap stale no-driver requests first so "active emergencies" / pending-assignment
+    // counts reflect the no-driver timeout instead of counting dead requests. Non-fatal.
+    await SOSRequestService.expireStaleRequests().catch((e) =>
+      console.warn('SOS timeout sweep failed (non-fatal):', e)
+    )
 
     const supabase = await createClient()
 

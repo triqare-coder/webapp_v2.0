@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { type EmergencyContact as ExistingEmergencyContact } from '@/services/emergencyContactService'
+import { SOSRequestService } from '@/services/sosRequestService'
 
 export interface SOSRequest {
   id: string
@@ -317,6 +318,14 @@ export class SOSService {
   static async getSOSRequests(): Promise<{ data: SOSRequest[] | null; error: string | null }> {
     try {
       console.log('🔍 Loading SOS requests...')
+
+      // Reap-on-view: enforce the no-driver timeout before reading so requests that
+      // have outlived `sos_request_timeout_minutes` stop showing as active here (and,
+      // via the resulting realtime UPDATE, on every other open dashboard). Non-fatal —
+      // the list must still load even if the sweep fails. (Throttled inside the service.)
+      await SOSRequestService.expireStaleRequests().catch((e) =>
+        console.warn('SOS timeout sweep failed (non-fatal):', e)
+      )
 
       // First, load all SOS requests
       const { data: sosRequests, error: sosError } = await supabase

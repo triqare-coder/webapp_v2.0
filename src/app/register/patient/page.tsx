@@ -65,7 +65,9 @@ export default function PatientRegistrationPage() {
     city: '',
     state: '',
     zipCode: '',
-    country: 'United States',
+    // Main patients are India-only (business rule). The field is not user-editable;
+    // the server also hard-locks this to India (see /api/register/patient).
+    country: 'India',
     emergencyContactName: '',
     emergencyContactPhone: '',
     emergencyContactRelationship: '',

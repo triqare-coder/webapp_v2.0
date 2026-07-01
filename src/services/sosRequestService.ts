@@ -61,6 +61,53 @@ async function syncAssignmentJunction(sosRequestId: string, driverUserId: string
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * No-driver timeout reaper                                           *
+ * ------------------------------------------------------------------ *
+ * The patient app already times out its own SOS after the configured
+ * window — but that timer only runs while the patient's app is open and
+ * on the home screen. A request created from a dashboard (ER-team "Create
+ * SOS"), or left behind when the app is backgrounded/closed, would
+ * otherwise sit in 'SOS Triggered' forever when no driver is available and
+ * keep showing as active on every dashboard. This reaper enforces the same
+ * timeout server-side. It runs whenever a dashboard fetches the SOS list
+ * (reap-on-view) and from /api/cron/expire-sos-requests. */
+const DEFAULT_SOS_TIMEOUT_MINUTES = 3
+// Reap-on-view fires this from every list fetch (incl. realtime refetches),
+// so throttle to at most one sweep per window per runtime instance.
+const EXPIRE_THROTTLE_MS = 15_000
+let lastExpireRunAt = 0
+
+/** Read the admin-set `sos_request_timeout_minutes` (tolerant of "3", "3 min", …). Falls back to 3. */
+async function getSosTimeoutMinutes(): Promise<number> {
+  const { data } = await supabase
+    .from('configurations')
+    .select('value')
+    .eq('key', 'sos_request_timeout_minutes')
+    .maybeSingle()
+  const match = String(data?.value ?? '').trim().match(/-?\d+(?:\.\d+)?/)
+  const parsed = match ? parseFloat(match[0]) : NaN
+  // A zero / negative / garbage value is an operator typo — never disable the safety net.
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SOS_TIMEOUT_MINUTES
+}
+
+/** Append a system 'Cancelled' history entry tagged as a no-driver timeout (mirrors the mobile writer). */
+function appendTimedOutHistory(existing: unknown): string {
+  let arr: Array<Record<string, unknown>> = []
+  try {
+    if (typeof existing === 'string' && existing.trim()) arr = JSON.parse(existing)
+    else if (Array.isArray(existing)) arr = existing as typeof arr
+  } catch { arr = [] }
+  if (!Array.isArray(arr)) arr = []
+  arr.push({
+    status: 'Cancelled',
+    timestamp: new Date().toISOString(),
+    actor: 'system',
+    note: 'Timed out — no driver available',
+  })
+  return JSON.stringify(arr)
+}
+
 export class SOSRequestService {
   static async getStats(): Promise<SOSRequestStats> {
     try {
@@ -256,6 +303,66 @@ export class SOSRequestService {
     } catch (error) {
       console.error('Error deleting SOS request:', error)
       throw error
+    }
+  }
+
+  /**
+   * Auto-reset stale no-driver requests (the "workflow reset" timeout enforced
+   * server-side). Flips every request still in 'SOS Triggered' with no driver
+   * assigned and older than the admin-configurable `sos_request_timeout_minutes`
+   * to the constraint-safe terminal 'Cancelled', tagging the status_history entry
+   * actor='system' / 'Timed out — no driver available' so it stays distinguishable
+   * from a deliberate user cancel. Throttled per runtime instance; the cron
+   * endpoint passes { force: true } to bypass the throttle.
+   */
+  static async expireStaleRequests(opts: { force?: boolean } = {}): Promise<{ expired: number; error?: string }> {
+    const now = Date.now()
+    if (!opts.force && now - lastExpireRunAt < EXPIRE_THROTTLE_MS) return { expired: 0 }
+    lastExpireRunAt = now
+
+    try {
+      const minutes = await getSosTimeoutMinutes()
+      const cutoffIso = new Date(now - minutes * 60_000).toISOString()
+
+      // Stale = still awaiting a driver (none assigned) past the timeout window.
+      const { data: stale, error: selErr } = await supabase
+        .from('sos_requests')
+        .select('id, status_history')
+        .eq('status', 'SOS Triggered')
+        .is('driver_id', null)
+        .lt('requested_at', cutoffIso)
+
+      if (selErr) {
+        console.error('expireStaleRequests: select failed', selErr)
+        return { expired: 0, error: selErr.message }
+      }
+      if (!stale?.length) return { expired: 0 }
+
+      let expired = 0
+      for (const row of stale) {
+        // Guarded update: only flip a row that is STILL unassigned 'SOS Triggered',
+        // so a driver who accepted in the race between this select and update is not
+        // clobbered (the guarded predicate then matches 0 rows and we skip it).
+        const { data: updated, error: updErr } = await supabase
+          .from('sos_requests')
+          .update({ status: 'Cancelled', status_history: appendTimedOutHistory(row.status_history) })
+          .eq('id', row.id)
+          .eq('status', 'SOS Triggered')
+          .is('driver_id', null)
+          .select('id')
+        if (updErr) {
+          console.error(`expireStaleRequests: update ${row.id} failed`, updErr)
+          continue
+        }
+        if (updated?.length) expired++
+      }
+      if (expired) {
+        console.log(`⏱️ expireStaleRequests: timed out ${expired} no-driver SOS request(s) older than ${minutes}m`)
+      }
+      return { expired }
+    } catch (e) {
+      console.error('expireStaleRequests: unexpected error', e)
+      return { expired: 0, error: e instanceof Error ? e.message : 'unknown error' }
     }
   }
 }

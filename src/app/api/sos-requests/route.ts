@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { normalizeSOSStatus, initStatusHistory } from '@/lib/sosStatus'
+import { SOSRequestService } from '@/services/sosRequestService'
 
 // GET /api/sos-requests - Get all SOS requests with patient details
 export async function GET(request: NextRequest) {
   try {
+    // Reap-on-view: expire stale no-driver requests past `sos_request_timeout_minutes`
+    // before listing, so timed-out SOS don't keep showing as active. Non-fatal.
+    await SOSRequestService.expireStaleRequests().catch((e) =>
+      console.warn('SOS timeout sweep failed (non-fatal):', e)
+    )
+
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '10')
