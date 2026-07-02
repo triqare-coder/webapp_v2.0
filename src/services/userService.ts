@@ -236,9 +236,27 @@ export class UserService {
           await clerkClient.users.deleteUser(user.clerk_user_id)
           console.log(`✅ Deleted user from Clerk: ${user.clerk_user_id}`)
         } catch (clerkError: any) {
-          console.error('⚠️ Error deleting from Clerk:', clerkError)
-          // Continue even if Clerk deletion fails (user might not exist in Clerk)
-          // This is intentional - we still want to delete from database
+          // A 404 means the Clerk account is already gone — safe to proceed and
+          // clean up the leftover Supabase row. Any other failure (network,
+          // permissions, rate limit) must ABORT: deleting the Supabase row while
+          // the Clerk account survives creates an orphaned account that is
+          // invisible to the admin dashboard (which lists Supabase rows only) and
+          // blocks the person from re-registering ("email already registered").
+          const status = clerkError?.status
+          const code = clerkError?.errors?.[0]?.code
+          const alreadyGone = status === 404 || code === 'resource_not_found'
+          if (!alreadyGone) {
+            console.error('❌ Aborting deletion — Clerk delete failed:', clerkError)
+            return {
+              success: false,
+              error:
+                `Failed to delete user from Clerk (${status ?? 'unknown error'}). ` +
+                `Aborted to avoid orphaning the account. Please retry.`,
+            }
+          }
+          console.warn(
+            `⚠️ Clerk account already absent (${status ?? code}); proceeding to delete Supabase row.`
+          )
         }
       } else {
         console.log('⚠️ User has no Clerk ID, skipping Clerk deletion')

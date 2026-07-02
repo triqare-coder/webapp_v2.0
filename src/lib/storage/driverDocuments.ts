@@ -38,11 +38,16 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
 
 export const DOCUMENT_TYPE_KEYS = DOCUMENT_TYPES.map((d) => d.key)
 /**
- * Documents required for a valid submission. Per spec TQWEB01 AC13/AC21 every
- * KYC document is mandatory — the applicant must upload at least one file for
- * each type before the form can be submitted.
+ * Documents required for a valid submission. Per agreed change TQWEB01-13,
+ * document upload is no longer wholesale mandatory: only the core KYC set
+ * (vehicle RC, driving license, Aadhaar) blocks submission. Every other document
+ * is optional and can be collected later during review.
  */
-export const REQUIRED_DOCUMENT_KEYS: string[] = [...DOCUMENT_TYPE_KEYS]
+export const REQUIRED_DOCUMENT_KEYS: string[] = [
+  'registration_certificate',
+  'driving_license',
+  'aadhaar_card',
+]
 
 export function isValidDocumentType(key: string): boolean {
   return DOCUMENT_TYPE_KEYS.includes(key)

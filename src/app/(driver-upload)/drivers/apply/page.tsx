@@ -408,7 +408,7 @@ export default function DriverApplyPage() {
           </div>
           {textField('vehicle_make_model', 'Make and Model', { placeholder: 'Optional — e.g. Force Traveller' })}
           {textField('vehicle_year', 'Year of Manufacture', { type: 'number', placeholder: 'Optional — e.g. 2022' })}
-          {textField('ambulance_permit_number', 'Ambulance Permit Number', { required: true, placeholder: 'Permit number' })}
+          {textField('ambulance_permit_number', 'Ambulance Permit Number', { placeholder: 'Optional — permit number' })}
         </CardContent>
       </Card>
 
@@ -426,7 +426,7 @@ export default function DriverApplyPage() {
           {textField('license_number', 'Driving License Number', { required: true, placeholder: 'License number' })}
           {textField('license_expiry', 'License Expiry Date', { required: true, type: 'date' })}
           <div id="field-license_type" className="space-y-1.5">
-            <Label htmlFor="license_type" className="text-sm font-medium text-[#333333]">License Type<span className="ml-0.5 text-[#cc3333]">*</span></Label>
+            <Label htmlFor="license_type" className="text-sm font-medium text-[#333333]">License Type</Label>
             <Select value={form.license_type} onValueChange={(v) => set('license_type', v)}>
               <SelectTrigger id="license_type" className={errors.license_type ? 'border-[#cc3333]' : ''}><SelectValue placeholder="Select type" /></SelectTrigger>
               <SelectContent>
@@ -494,7 +494,7 @@ export default function DriverApplyPage() {
             </span>
             <span className="font-semibold text-slate-900">Document upload</span>
           </CardTitle>
-          <p className="mt-1 text-xs text-[#666666]">All documents are required. Max 10 MB per file.</p>
+          <p className="mt-1 text-xs text-[#666666]">Documents marked <span className="text-[#cc3333]">*</span> are required. Others are optional. Max 10 MB per file.</p>
         </CardHeader>
         <CardContent className="space-y-3">
           {DOCUMENT_TYPES.map((def) => (

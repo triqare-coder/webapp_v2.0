@@ -23,7 +23,8 @@ import {
   Loader2,
   AlertCircle,
   Ban,
-  CheckCircle
+  CheckCircle,
+  RefreshCw
 } from 'lucide-react'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DatabaseUser } from '@/lib/supabase'
@@ -272,6 +273,12 @@ export default function AdminUsersPage() {
               <Shield className="h-3 w-3 mr-1" />
               Admin Only
             </Badge>
+            <Link href="/admin/users/account-sync">
+              <Button variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Account Sync
+              </Button>
+            </Link>
             <Link href="/admin/users/add">
               <Button>
                 <UserPlus className="h-4 w-4 mr-2" />

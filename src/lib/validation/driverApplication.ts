@@ -93,7 +93,8 @@ export const driverApplicationSchema = z.object({
   vehicle_type: z.enum(VEHICLE_TYPES, { message: VALIDATION_MESSAGES.required }),
   vehicle_make_model: optionalString,
   vehicle_year: optionalInt(1900, 2100),
-  ambulance_permit_number: requiredString(),
+  // Optional per agreed change TQWEB01-04 (was mandatory).
+  ambulance_permit_number: optionalString,
 
   // License
   license_number: requiredString(),
@@ -101,7 +102,12 @@ export const driverApplicationSchema = z.object({
     (v) => isFutureDate(v),
     VALIDATION_MESSAGES.licenseExpired,
   ),
-  license_type: z.enum(LICENSE_TYPES, { message: VALIDATION_MESSAGES.required }),
+  // Optional per agreed change TQWEB01-04 (was mandatory). Empty string → undefined,
+  // otherwise must be one of the allowed license types.
+  license_type: z.preprocess(
+    (v) => (v === '' || v === null || v === undefined ? undefined : v),
+    z.enum(LICENSE_TYPES).optional(),
+  ),
 
   // Additional
   driving_experience_years: optionalInt(0, 80),
