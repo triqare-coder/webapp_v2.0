@@ -6,8 +6,10 @@
  * Resend is lazily imported so the no-op path has no hard runtime dependency.
  */
 
-const FROM = process.env.EMAIL_FROM || 'QSoS <noreply@triqare.in>'
-const SUPPORT = 'support@triqare.in'
+// Sender domain MUST be verified in Resend. triqare.com is verified (triqare.in is not),
+// so the default sends from .com; override via EMAIL_FROM only with another verified domain.
+const FROM = process.env.EMAIL_FROM || 'QSoS <noreply@triqare.com>'
+const SUPPORT = 'support@triqare.com'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://triqare.in'
 
 /** Escape user-provided values before interpolating into email HTML (anti-injection). */
