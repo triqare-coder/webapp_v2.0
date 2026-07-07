@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { UserService } from '@/services/userService'
 import { TransportCompanyService } from '@/services/transportCompanyService'
 import { supabase } from '@/lib/supabase'
+import { driverUniqueErrorMessage } from '@/lib/driverErrors'
 
 export async function POST(request: NextRequest) {
   try {
@@ -95,7 +96,10 @@ export async function POST(request: NextRequest) {
       user_id: newUser.id,
       transport_company_id: transportCompany.user_id,
       license_number: formData.license_number,
-      aadhar_number: formData.aadhar_number || null,
+      // Trim to null so a blank/whitespace value stays NULL (distinct under the
+      // UNIQUE constraint) instead of colliding as a stored '' — otherwise a
+      // second driver with no Aadhar falsely hits "already exists".
+      aadhar_number: formData.aadhar_number?.trim() || null,
       is_verified: formData.is_verified || false,
       status: formData.status || 'available',
       current_request_id: null,
@@ -120,9 +124,10 @@ export async function POST(request: NextRequest) {
     if (driverCreateError || !newDriver) {
       // If driver creation fails, we should clean up the user record
       await UserService.deleteUser(newUser.id)
+      const duplicateMsg = driverUniqueErrorMessage(driverCreateError)
       return NextResponse.json({
-        error: driverCreateError?.message || 'Failed to create driver'
-      }, { status: 500 })
+        error: duplicateMsg || driverCreateError?.message || 'Failed to create driver'
+      }, { status: duplicateMsg ? 409 : 500 })
     }
 
     return NextResponse.json({

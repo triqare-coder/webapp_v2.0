@@ -1,5 +1,24 @@
 import { supabase } from '@/lib/supabase'
 
+/**
+ * Nullable UNIQUE columns whose blank/whitespace values MUST be stored as NULL,
+ * never ''. `aadhar_number` is optional but unique — Postgres treats NULLs as
+ * distinct, so many drivers may have none, but a stored '' collides on the
+ * second insert and falsely raises "Aadhar number already exists" even when the
+ * admin left the field empty. Coerce blanks to null on every write.
+ */
+const NULLABLE_UNIQUE_FIELDS = ['aadhar_number'] as const
+
+function nullifyBlankUniques<T extends object>(obj: T): T {
+  const out = { ...obj } as Record<string, unknown>
+  for (const key of NULLABLE_UNIQUE_FIELDS) {
+    if (typeof out[key] === 'string' && (out[key] as string).trim() === '') {
+      out[key] = null
+    }
+  }
+  return out as T
+}
+
 export interface Driver {
   user_id: string
   transport_company_id: string
@@ -293,7 +312,7 @@ export class DriverService {
       const { data: result, error } = await supabase
         .from('drivers')
         .insert([{
-          ...validData,
+          ...nullifyBlankUniques(validData),
           last_updated_at: new Date().toISOString()
         }])
         .select(`
@@ -335,7 +354,7 @@ export class DriverService {
       const { data: result, error } = await supabase
         .from('drivers')
         .update({
-          ...data,
+          ...nullifyBlankUniques(data),
           last_updated_at: new Date().toISOString()
         })
         .eq('user_id', id)

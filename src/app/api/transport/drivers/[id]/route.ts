@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { UserService } from '@/services/userService'
 import { TransportCompanyService } from '@/services/transportCompanyService'
 import { supabase } from '@/lib/supabase'
+import { driverUniqueErrorMessage } from '@/lib/driverErrors'
 
 export async function GET(
   request: NextRequest,
@@ -283,7 +284,10 @@ export async function PUT(
     // Update driver information with actual table fields
     const driverData = {
       license_number: formData.license_number,
-      aadhar_number: formData.aadhar_number || null,
+      // Trim to null so a blank/whitespace value stays NULL (distinct under the
+      // UNIQUE constraint) instead of colliding as a stored '' — otherwise a
+      // second driver with no Aadhar falsely hits "already exists".
+      aadhar_number: formData.aadhar_number?.trim() || null,
       is_verified: formData.is_verified || false,
       status: formData.status || 'available',
       latitude: formData.latitude || null,
@@ -306,9 +310,10 @@ export async function PUT(
       .single()
 
     if (driverUpdateError || !updatedDriver) {
+      const duplicateMsg = driverUniqueErrorMessage(driverUpdateError)
       return NextResponse.json({
-        error: driverUpdateError?.message || 'Failed to update driver'
-      }, { status: 500 })
+        error: duplicateMsg || driverUpdateError?.message || 'Failed to update driver'
+      }, { status: duplicateMsg ? 409 : 500 })
     }
 
     return NextResponse.json({

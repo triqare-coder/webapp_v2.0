@@ -30,17 +30,39 @@ function emptyState(): DocsState {
   return s
 }
 
-/** PUT a file to a Supabase signed upload URL with progress via XHR. */
+/**
+ * Fully read a picked file into an in-memory Blob before upload.
+ *
+ * Files chosen from cloud providers (Google Drive, OneDrive, etc.) on Android
+ * Chrome are NOT materialised on the device — the browser streams the bytes on
+ * demand while the XHR is in flight, and if that lazy fetch fails the PUT dies
+ * with a bare `onerror` that we could only report as a vague "check your
+ * internet" error. Reading `arrayBuffer()` up front forces the download now, so
+ * the subsequent PUT sends real in-memory bytes (reliable) — and if the cloud
+ * file genuinely can't be read, we can say so specifically.
+ */
+async function materialize(file: File): Promise<Blob> {
+  try {
+    const buf = await file.arrayBuffer()
+    return new Blob([buf], { type: file.type || 'application/octet-stream' })
+  } catch {
+    throw new Error(
+      `Couldn't read "${file.name}". If it's stored in Google Drive or another cloud app, download it to your device first, then upload it.`,
+    )
+  }
+}
+
+/** PUT a blob to a Supabase signed upload URL with progress via XHR. */
 function putWithProgress(
   signedUrl: string,
-  file: File,
+  body: Blob,
   onProgress: (pct: number) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('PUT', signedUrl, true)
     xhr.setRequestHeader('x-upsert', 'true')
-    if (file.type) xhr.setRequestHeader('content-type', file.type)
+    if (body.type) xhr.setRequestHeader('content-type', body.type)
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
     }
@@ -49,7 +71,7 @@ function putWithProgress(
       else reject(new Error(`Upload failed (${xhr.status})`))
     }
     xhr.onerror = () => reject(new Error('Network error'))
-    xhr.send(file)
+    xhr.send(body)
   })
 }
 
@@ -67,6 +89,9 @@ export function useDocumentUpload(draftId: string) {
     async (type: string, entry: DocFile) => {
       const { file } = entry
       try {
+        // Read cloud-picked files into memory first (see materialize()) so the
+        // upload can't fail mid-stream on a lazily-fetched Drive/OneDrive file.
+        const body = await materialize(file)
         const res = await fetch('/api/drivers/applications/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -77,7 +102,7 @@ export function useDocumentUpload(draftId: string) {
           throw new Error(data.error || 'Could not prepare the upload.')
         }
         const { signedUrl, path } = (await res.json()) as { signedUrl: string; path: string }
-        await putWithProgress(signedUrl, file, (pct) => update(type, entry.id, { progress: pct }))
+        await putWithProgress(signedUrl, body, (pct) => update(type, entry.id, { progress: pct }))
         update(type, entry.id, { status: 'done', progress: 100, path })
       } catch (err) {
         const label = getDocumentTypeDef(type)?.label ?? 'document'
