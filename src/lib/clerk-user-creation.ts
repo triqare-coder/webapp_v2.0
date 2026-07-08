@@ -1,64 +1,27 @@
 import { clerkClient } from '@clerk/nextjs/server'
 
 /**
- * Validate and format phone number for Clerk
- * Clerk requires phone numbers in international format with country code
- *
- * @param phone - Phone number to validate
- * @returns Formatted phone number or null if invalid
- */
-function validatePhoneNumber(phone?: string): string | null {
-  if (!phone || phone.trim() === '') return null
-
-  try {
-    // Remove all whitespace and special characters except + and digits
-    let cleaned = phone.trim().replace(/[\s\-\(\)\.]/g, '')
-
-    // If it doesn't start with +, assume it's an Indian number and add +91
-    if (!cleaned.startsWith('+')) {
-      // Remove leading 0 if present (common in Indian numbers)
-      if (cleaned.startsWith('0')) {
-        cleaned = cleaned.substring(1)
-      }
-
-      // Only process if it's exactly 10 digits (valid Indian mobile number)
-      if (/^\d{10}$/.test(cleaned)) {
-        cleaned = '+91' + cleaned
-      } else {
-        // Invalid format, skip phone number
-        console.warn(`Skipping invalid phone number format: ${phone}`)
-        return null
-      }
-    }
-
-    // Validate the final format: should be + followed by 10-15 digits
-    if (!/^\+\d{10,15}$/.test(cleaned)) {
-      console.warn(`Skipping phone number with invalid international format: ${phone}`)
-      return null
-    }
-
-    return cleaned
-  } catch (error) {
-    console.error(`Error validating phone number ${phone}:`, error)
-    return null
-  }
-}
-
-/**
  * Create a user directly in Clerk with a temporary password
  * User can reset their password later to login
+ *
+ * NOTE: the phone number is intentionally NOT sent to Clerk. Phone is not a
+ * login method for these accounts (users sign in by email + password reset),
+ * and Clerk rejects phone numbers whose country code is not enabled on the
+ * instance ("Unsupported country code"), which used to fail the whole import.
+ * The phone is persisted in Supabase by the caller instead. The `phone`
+ * parameter is kept for backward-compatibility with existing callers.
  *
  * @param email - User's email address
  * @param fullName - User's full name
  * @param role - User's role (driver, patient, transport_company, etc.)
- * @param phone - Optional phone number (will be formatted to international format)
+ * @param _phone - Optional phone number (persisted in Supabase by the caller, not Clerk)
  * @returns Object with success status, clerkUserId, and error if any
  */
 export async function createClerkUser(
   email: string,
   fullName: string,
   role: string,
-  phone?: string
+  _phone?: string
 ): Promise<{ success: boolean; clerkUserId?: string; error?: string }> {
   try {
     const client = await clerkClient()
@@ -66,13 +29,10 @@ export async function createClerkUser(
     // Generate a temporary random password (user will reset it later)
     const temporaryPassword = generateTemporaryPassword()
 
-    // Validate and format phone number
-    const formattedPhone = validatePhoneNumber(phone)
+    console.log(`Creating Clerk user: ${email} (role: ${role})`)
 
-    // Log what we're sending to Clerk for debugging
-    console.log(`Creating Clerk user: ${email}, phone: ${phone} -> ${formattedPhone || 'skipped'}`)
-
-    // Build user creation payload
+    // Build user creation payload. Phone is deliberately omitted — see the note
+    // on this function.
     const userPayload: any = {
       emailAddress: [email],
       password: temporaryPassword,
@@ -83,11 +43,6 @@ export async function createClerkUser(
       },
       skipPasswordChecks: true, // Skip password strength requirements for temporary password
       skipPasswordRequirement: false // We ARE providing a password
-    }
-
-    // Only add phone number if it's valid
-    if (formattedPhone) {
-      userPayload.phoneNumber = [formattedPhone]
     }
 
     // Create user in Clerk
