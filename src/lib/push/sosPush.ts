@@ -24,6 +24,8 @@ export type SOSPushEvent =
   | 'sos.created'
   | 'sos.accepted'
   | 'sos.transport_arrived'
+  | 'sos.picked_up'
+  | 'sos.arrived_hospital'
   | 'sos.no_driver'
   | 'sos.cancelled'
 
@@ -78,6 +80,8 @@ export function classify(row: SOSRow, t: SOSTransition): SOSPushEvent | null {
 
   if (newStatus === 'Driver En Route') return 'sos.accepted'
   if (newStatus === 'Transport Arrived') return 'sos.transport_arrived'
+  if (newStatus === 'User Picked Up') return 'sos.picked_up'
+  if (newStatus === 'Arrived at Hospital') return 'sos.arrived_hospital'
 
   if (TERMINAL_STATUSES.has(newStatus)) {
     // A driver was already on the way and the request ended → they must stand down.
@@ -94,8 +98,8 @@ export function classify(row: SOSRow, t: SOSTransition): SOSPushEvent | null {
     return null
   }
 
-  // 'User Picked Up' / 'Arrived at Hospital' are not in Phase 1. Adding them is a
-  // case here plus a case in the mobile router.
+  // Any other transition (e.g. a no-op re-write of the same status) is not a
+  // push event.
   return null
 }
 
@@ -236,6 +240,20 @@ function buildPayload(event: SOSPushEvent, row: SOSRow): PushPayload {
         title: 'Your ambulance has arrived',
         body: `${driver} is at your pickup location.`,
         data: { type: 'sos_transport_arrived', requestId: row.id },
+      }
+
+    case 'sos.picked_up':
+      return {
+        title: 'On the way to hospital',
+        body: `${driver} has picked you up and is heading to the hospital.`,
+        data: { type: 'sos_picked_up', requestId: row.id },
+      }
+
+    case 'sos.arrived_hospital':
+      return {
+        title: 'Arrived at hospital',
+        body: 'You have reached the hospital. Stay safe — your SOS is now complete.',
+        data: { type: 'sos_arrived_hospital', requestId: row.id },
       }
 
     case 'sos.no_driver':

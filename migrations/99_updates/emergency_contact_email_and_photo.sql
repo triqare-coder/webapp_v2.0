@@ -13,10 +13,13 @@
 --   * Each contact can carry an optional photo. Photos are stored inline as a
 --     small resized base64 data URI (the app downscales to ~256px before save),
 --     so no storage bucket / RLS is required — the existing insert path handles
---     the write unchanged. NOTE: emergency_contacts has no anon grant and only
---     SELECT/UPDATE RLS policies (see 02_security/02_grants.sql and
---     01_rls_policies.sql); writes must go through a service-role server route,
---     not the anon client, or the INSERT is denied by RLS.
+--     the write unchanged. NOTE (corrected): emergency_contacts DOES grant
+--     SELECT/INSERT/UPDATE/DELETE to authenticated + service_role and DOES have
+--     owner-scoped SELECT/INSERT/UPDATE/DELETE RLS policies (see
+--     02_security/02_grants.sql line 35 and 01_rls_policies.sql lines 165-214),
+--     so the app's insert path works. The only prerequisite is that the client's
+--     Supabase session carry the Clerk JWT once JWT→RLS enforcement goes live
+--     (staged) so the ownership check resolves; until then RLS is permissive.
 --
 -- Idempotent: safe to re-run.
 

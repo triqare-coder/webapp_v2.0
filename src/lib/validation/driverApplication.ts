@@ -17,16 +17,22 @@ export const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
   medical_van: 'Medical Van',
 }
 
-// Spec regexes (verbatim).
+// Spec regexes (verbatim), except PHONE_REGEX which is tightened to the Indian
+// mobile format below.
 export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-export const PHONE_REGEX = /^\d{10}$/
+// Drivers are India-only. A valid Indian mobile number is exactly 10 digits and
+// begins 6–9 (no country code, no leading 0). Enforcing this here — together
+// with the 12-digit Aadhaar and 6-digit pincode below — is what locks the driver
+// identity to India on BOTH the client form and the server submit route, since
+// the two share this single schema. A non-Indian number can't be submitted.
+export const PHONE_REGEX = /^[6-9]\d{9}$/
 export const AADHAAR_REGEX = /^\d{12}$/
 export const PINCODE_REGEX = /^\d{6}$/
 
 export const VALIDATION_MESSAGES = {
   required: 'This field is required',
   email: 'Please enter a valid email address',
-  phone: 'Phone number must be 10 digits',
+  phone: 'Enter a valid 10-digit Indian mobile number',
   aadhaar: 'Aadhaar number must be 12 digits',
   pincode: 'Pincode must be 6 digits',
   dobAge: 'Driver must be at least 21 years old',
