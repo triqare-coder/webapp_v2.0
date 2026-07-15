@@ -22,6 +22,13 @@ const isPublicRoute = createRouteMatcher([
   '/mobile-app-required(.*)', // Allow access to mobile app redirect page
   '/test-mobile-redirect(.*)', // Allow access to test page
   '/api/webhooks(.*)',
+  // The SOS push-dispatch webhook is called machine-to-machine by the Postgres
+  // pg_net trigger, which has no Clerk session. Without this it is 307-redirected
+  // to /sign-in and no push is ever sent. It is NOT unprotected: the handler
+  // rejects any request whose bearer token != PUSH_DISPATCH_SECRET (503 if the
+  // secret is unset, 401 on mismatch), so Clerk's user-session gate is simply the
+  // wrong auth layer for it.
+  '/api/push(.*)',
   // NOTE: /api/admin/* setup & migration endpoints (create-initial-user, users/sync,
   // migrate-users, auto-sync, migrate-to-user-records, create-user-records-table,
   // populate-user-records) were previously whitelisted as PUBLIC. That exposed
