@@ -24,6 +24,11 @@
   --background: #ffffff;
   --foreground: #1a1a1a;
 
+  /* The web app is designed light-only (no dark: variants, no ThemeProvider).
+     Pin the color-scheme so native controls (inputs, date pickers, scrollbars)
+     stay light and inherited text never flips to near-white on a dark-mode OS. */
+  color-scheme: light;
+
   /* Status Colors */
   --status-success: #28a745;
   --status-success-bg: #d4edda;
@@ -46,14 +51,10 @@
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --border-color: #374151;
-    --border-color-hover: #4b5563;
-  }
-}
+/* NOTE: no prefers-color-scheme: dark override.
+   This app has no dark theme — flipping --foreground to near-white here made
+   input text invisible (white-on-white) on dark-mode devices while the pages
+   stayed hardcoded light. Kept light-only until a real dark theme exists. */
 
 body {
   background: var(--background);
