@@ -29,6 +29,12 @@ const isPublicRoute = createRouteMatcher([
   // secret is unset, 401 on mismatch), so Clerk's user-session gate is simply the
   // wrong auth layer for it.
   '/api/push(.*)',
+  // The emergency-contact invite endpoint is called by the MOBILE app when a user
+  // adds a contact — the app has no Clerk web session, so without this it is
+  // 307-redirected to /sign-in and the invite email is never sent. It is IP
+  // rate-limited and only triggers a best-effort email (no data mutation), so the
+  // Clerk user-session gate is the wrong auth layer for it.
+  '/api/emergency-contacts(.*)',
   // NOTE: /api/admin/* setup & migration endpoints (create-initial-user, users/sync,
   // migrate-users, auto-sync, migrate-to-user-records, create-user-records-table,
   // populate-user-records) were previously whitelisted as PUBLIC. That exposed

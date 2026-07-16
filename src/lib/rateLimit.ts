@@ -6,7 +6,7 @@ import { createServerClient } from '@/lib/supabase/server'
  * sliding window via the `record_submission_attempt` SQL function. SERVER-ONLY.
  */
 
-export type RateScope = 'submit' | 'upload'
+export type RateScope = 'submit' | 'upload' | 'ec-invite'
 
 /** Best-effort client IP from proxy headers (Vercel sets x-forwarded-for). */
 export function getClientIp(headers: Headers): string {

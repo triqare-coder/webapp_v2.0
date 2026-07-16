@@ -150,6 +150,57 @@ View full application: ${reviewLink}`,
   await Promise.all(sends)
 }
 
+// ── Emergency-contact invitation ────────────────────────────────────────────
+/**
+ * Invite a person (by email) whom a user just added as an emergency contact to
+ * create their own QSoS account. Best-effort: the private `send` helper already
+ * no-ops when RESEND_API_KEY is absent and swallows its own errors, so a
+ * missing/mis-configured provider never fails the caller.
+ */
+export async function sendEmergencyContactInviteEmail(args: {
+  email: string
+  contactName?: string | null
+  inviterName?: string | null
+}): Promise<void> {
+  const { email } = args
+  const contactName = args.contactName?.trim() || 'there'
+  const inviter = args.inviterName?.trim() || 'A TriQare user'
+  const greetH = esc(contactName)
+  const inviterH = esc(inviter)
+
+  await send({
+    to: email,
+    subject: `${inviter} added you as an emergency contact on TriQare QSoS`,
+    text: `Hi ${contactName},
+
+${inviter} has added you as an emergency contact on TriQare QSoS, our emergency-response app.
+
+You can create your own free account so you can be reached and use the app yourself:
+  1. Download the TriQare QSoS app.
+  2. Sign up / log in using THIS email address (${email}).
+
+Once you're in, you have access to every feature of the app. Note: the Emergency (SOS) button works only while you are physically within India.
+
+Questions? Contact ${SUPPORT}.
+
+— TriQare Team`,
+    html: shell('You were added as an emergency contact', `
+      <p>Hi <strong>${greetH}</strong>,</p>
+      <p><strong>${inviterH}</strong> has added you as an emergency contact on <strong>TriQare QSoS</strong>, our emergency-response app.</p>
+      <p>Create your own free account so you can be reached and use the app yourself:</p>
+      <ol style="padding-left:18px">
+        <li>Download the <strong>TriQare QSoS</strong> app.</li>
+        <li>Sign up / log in using <strong>this email address</strong> (${esc(email)}).</li>
+      </ol>
+      <p>Once you're in, you have access to every feature of the app. The Emergency (SOS) button works only while you are physically within India.</p>
+      <p style="text-align:center;margin:20px 0">
+        <a href="${APP_URL}" style="background:#cc3333;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Get the app</a>
+      </p>
+      <p>Questions? Contact <a href="mailto:${SUPPORT}" style="color:#cc3333">${SUPPORT}</a>.</p>
+      <p>— TriQare Team</p>`),
+  })
+}
+
 // ── Approval ────────────────────────────────────────────────────────────────
 export async function sendApprovalEmail(args: {
   referenceNumber: string
