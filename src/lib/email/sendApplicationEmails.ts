@@ -206,17 +206,46 @@ export async function sendApprovalEmail(args: {
   referenceNumber: string
   fullName: string
   email: string
+  /** Present when a brand-new login was created for this driver. */
+  tempPassword?: string | null
 }): Promise<void> {
-  const { referenceNumber, fullName, email } = args
+  const { referenceNumber, fullName, email, tempPassword } = args
+
+  // A driver account is provisioned on approval, so the approval email is also
+  // their way in. Without credentials here they'd have no idea how to sign in.
+  const credsText = tempPassword
+    ? `
+You can now sign in to the QSoS driver app:
+  Email:    ${email}
+  Password: ${tempPassword}
+
+Please change this password after your first sign-in.
+`
+    : `
+You can now sign in to the QSoS driver app using this email address (${email}).
+If you don't know your password, use "Forgot Password" in the app to set one.
+`
+
+  const credsHtml = tempPassword
+    ? `<div style="background:#f0f6ff;border:1px solid #b9d4ff;border-radius:6px;padding:12px">
+         <strong>Your driver app sign-in</strong><br>
+         Email: <strong>${esc(email)}</strong><br>
+         Temporary password: <strong style="font-family:monospace">${esc(tempPassword)}</strong><br>
+         <span style="color:#666">Please change this password after your first sign-in.</span>
+       </div>`
+    : `<div style="background:#f0f6ff;border:1px solid #b9d4ff;border-radius:6px;padding:12px">
+         <strong>Your driver app sign-in</strong><br>
+         Sign in with this email address: <strong>${esc(email)}</strong>.<br>
+         <span style="color:#666">If you don't know your password, use "Forgot Password" in the app.</span>
+       </div>`
+
   await send({
     to: email,
     subject: 'Congratulations! Your QSoS Driver Application is Approved',
     text: `Dear ${fullName},
 
 Congratulations! Your QSoS driver application (${referenceNumber}) has been approved.
-
-Next steps: [Our team will share onboarding details shortly.]
-
+${credsText}
 Questions? Contact ${SUPPORT}.
 
 Welcome to the QSoS family!
@@ -224,9 +253,7 @@ Welcome to the QSoS family!
     html: shell('Application Approved 🎉', `
       <p>Dear <strong>${esc(fullName)}</strong>,</p>
       <p>Congratulations! Your QSoS driver application (<strong>${referenceNumber}</strong>) has been <strong style="color:#16a34a">approved</strong>.</p>
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px">
-        <strong>Next steps</strong><br>Our team will share onboarding details shortly.
-      </div>
+      ${credsHtml}
       <p>Questions? Contact <a href="mailto:${SUPPORT}" style="color:#cc3333">${SUPPORT}</a>.</p>
       <p>Welcome to the QSoS family!<br>- TriQare Team</p>`),
   })

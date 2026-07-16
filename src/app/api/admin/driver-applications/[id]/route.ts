@@ -9,6 +9,7 @@ import {
   updateReview,
 } from '@/services/driverApplicationService'
 import { sendApprovalEmail, sendRejectionEmail } from '@/lib/email/sendApplicationEmails'
+import { provisionApprovedDriver } from '@/services/driverProvisioning'
 
 const SIGNED_URL_TTL = 300 // 5 minutes
 const MAX_REASON_LEN = 1000
@@ -110,6 +111,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!app) return NextResponse.json({ error: 'Application not found' }, { status: 404 })
 
     if (body.action === 'approve') {
+      // Provision the login BEFORE flipping the status, so "approved" can never
+      // again mean "has no account and can't sign in". Provisioning is idempotent,
+      // so a failure here is safely retryable by approving again.
+      let provisioned
+      try {
+        provisioned = await provisionApprovedDriver(app)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'unknown error'
+        console.error('[admin:applications:approve] provisioning failed:', message)
+        return NextResponse.json(
+          {
+            error:
+              `Could not create the driver's login account: ${message}. ` +
+              'The application was NOT approved — please retry.',
+          },
+          { status: 500 },
+        )
+      }
+
       const updated = await updateReview(id, {
         status: 'approved',
         rejection_reason: null,
@@ -119,8 +139,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         referenceNumber: updated.reference_number,
         fullName: updated.full_name,
         email: updated.email,
+        tempPassword: provisioned.tempPassword,
       })
-      return NextResponse.json({ success: true, status: updated.status })
+      return NextResponse.json({
+        success: true,
+        status: updated.status,
+        driverUserId: provisioned.userId,
+        loginCreated: !!provisioned.tempPassword,
+      })
     }
 
     if (body.action === 'reject') {
