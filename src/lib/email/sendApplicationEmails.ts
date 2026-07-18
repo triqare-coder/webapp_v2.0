@@ -201,6 +201,62 @@ Questions? Contact ${SUPPORT}.
   })
 }
 
+// ── App feedback ────────────────────────────────────────────────────────────
+/**
+ * Emails in-app feedback to the Triqare team so the mobile user never has to
+ * leave the app to open a mail client. Best-effort (send() no-ops without
+ * RESEND_API_KEY). Recipient defaults to info@triqare.com (override via
+ * FEEDBACK_EMAIL).
+ */
+export async function sendAppFeedbackEmail(args: {
+  category: string
+  message: string
+  name?: string | null
+  email?: string | null
+  phone?: string | null
+  userId?: string | null
+  platform?: string | null
+  appVersion?: string | null
+}): Promise<void> {
+  const to = process.env.FEEDBACK_EMAIL || 'info@triqare.com'
+  const name = args.name?.trim() || 'A Triqare user'
+  const category = args.category?.trim() || 'General'
+  const msg = args.message?.trim() || ''
+
+  const rows: [string, string][] = [
+    ['Category', category],
+    ['Name', name],
+    ['Email', args.email?.trim() || '—'],
+    ['Phone', args.phone?.trim() || '—'],
+    ['User ID', args.userId?.trim() || '—'],
+    ['Platform', args.platform?.trim() || '—'],
+    ['App version', args.appVersion?.trim() || '—'],
+  ]
+
+  await send({
+    to,
+    subject: `App Feedback (${category}) from ${name}`,
+    text: `App Feedback
+
+Category: ${category}
+
+${msg}
+
+— User —
+${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}`,
+    html: shell(`App Feedback · ${esc(category)}`, `
+      <p style="white-space:pre-wrap;background:#f5f5f5;border-radius:6px;padding:12px">${esc(msg)}</p>
+      <table style="font-size:13px;border-collapse:collapse">
+        ${rows
+          .map(
+            ([k, v]) =>
+              `<tr><td style="padding:2px 10px 2px 0;color:#666">${esc(k)}</td><td style="padding:2px 0"><strong>${esc(v)}</strong></td></tr>`,
+          )
+          .join('')}
+      </table>`),
+  })
+}
+
 // ── Approval ────────────────────────────────────────────────────────────────
 export async function sendApprovalEmail(args: {
   referenceNumber: string

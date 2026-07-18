@@ -35,6 +35,10 @@ const isPublicRoute = createRouteMatcher([
   // rate-limited and only triggers a best-effort email (no data mutation), so the
   // Clerk user-session gate is the wrong auth layer for it.
   '/api/emergency-contacts(.*)',
+  // App-feedback submit — called by the mobile app (no Clerk web session) so it
+  // can email feedback to the team instead of opening a mail client. Public +
+  // IP rate-limited; only sends an email, mutates nothing.
+  '/api/app-feedback(.*)',
   // NOTE: /api/admin/* setup & migration endpoints (create-initial-user, users/sync,
   // migrate-users, auto-sync, migrate-to-user-records, create-user-records-table,
   // populate-user-records) were previously whitelisted as PUBLIC. That exposed
