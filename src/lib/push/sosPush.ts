@@ -42,6 +42,9 @@ export interface DispatchResult {
    * delivery failure.
    */
   notConfigured?: boolean
+  /** Diagnostic only: 'missing' (env unset) vs 'unparseable' (set but mangled), + raw length. */
+  configReason?: 'missing' | 'unparseable'
+  configLen?: number
 }
 
 interface SOSRow {
@@ -354,6 +357,8 @@ export async function dispatchSOSPush(t: SOSTransition): Promise<DispatchResult>
     recipients: tokens.length,
     sent: result.sent,
     failed: result.failed,
-    ...(result.notConfigured ? { notConfigured: true } : {}),
+    ...(result.notConfigured
+      ? { notConfigured: true, configReason: result.configReason, configLen: result.configLen }
+      : {}),
   }
 }

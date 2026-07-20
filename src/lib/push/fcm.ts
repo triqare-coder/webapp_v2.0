@@ -51,9 +51,27 @@ export interface SendResult {
    * sent a live debug down the wrong path for hours.
    */
   notConfigured?: boolean
+  /** Diagnostic only (never the secret): why the sender is unavailable + the raw env length. */
+  configReason?: 'missing' | 'unparseable'
+  configLen?: number
 }
 
 let app: App | null = null
+
+/**
+ * Why the sender is unavailable, for diagnostics only. NEVER contains the secret —
+ * just a reason code and the raw value's length, which is enough to tell "not set"
+ * from "set but truncated/mangled by the dashboard" without leaking anything.
+ */
+let configReason: 'missing' | 'unparseable' | undefined
+let configLen = 0
+
+export function getSenderConfigDiagnostic(): {
+  reason?: 'missing' | 'unparseable'
+  len: number
+} {
+  return { reason: configReason, len: configLen }
+}
 
 /**
  * Lazily initialize the Admin SDK. Returns null (rather than throwing) when the
@@ -64,7 +82,9 @@ function getFirebaseApp(): App | null {
   if (app) return app
 
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT
+  configLen = raw ? raw.length : 0
   if (!raw) {
+    configReason = 'missing'
     console.warn('[push] FIREBASE_SERVICE_ACCOUNT is not set — push notifications disabled')
     return null
   }
@@ -82,9 +102,14 @@ function getFirebaseApp(): App | null {
       ? existing[0]
       : initializeApp({ credential: cert(serviceAccount) }, 'push')
 
+    configReason = undefined
     return app
   } catch (err) {
-    console.error('[push] FIREBASE_SERVICE_ACCOUNT could not be parsed', err)
+    configReason = 'unparseable'
+    console.error(
+      `[push] FIREBASE_SERVICE_ACCOUNT could not be parsed (raw length ${configLen}; expected ~3196 for the base64 blob — a shorter value means the dashboard truncated it)`,
+      err
+    )
     return null
   }
 }
@@ -99,7 +124,15 @@ export async function sendToTokens(tokens: string[], payload: PushPayload): Prom
 
   const firebase = getFirebaseApp()
   if (!firebase) {
-    return { sent: 0, failed: unique.length, invalidTokens: [], notConfigured: true }
+    const diag = getSenderConfigDiagnostic()
+    return {
+      sent: 0,
+      failed: unique.length,
+      invalidTokens: [],
+      notConfigured: true,
+      configReason: diag.reason,
+      configLen: diag.len,
+    }
   }
 
   const priority = payload.priority ?? 'high'
