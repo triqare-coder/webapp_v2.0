@@ -69,14 +69,20 @@ CREATE TRIGGER update_sos_request_declines_updated_at
 -- exact trap section 0 of the staged-auth plan warns about.
 GRANT SELECT, INSERT, DELETE ON public.sos_request_declines TO anon, authenticated, service_role;
 
--- Explicitly DISABLE RLS. The Supabase Table Editor auto-enables RLS on tables,
--- and with no anon policy that fails EVERY driver Reject closed with
--- "42501: new row violates row-level security policy" (observed in prod
--- 2026-07-20: reject silently rolled back, so the call kept ringing until
--- someone accepted it). The app is anon-key with no Clerk token yet, so
--- owner-scoped policies would fail-closed — RLS must stay off until the
--- Clerk-JWT cutover below.
-ALTER TABLE public.sos_request_declines DISABLE ROW LEVEL SECURITY;
+-- Keep Reject working whether RLS is ON or OFF. The Supabase Table Editor
+-- auto-enables RLS on tables from the UI, and with no anon policy that fails
+-- EVERY driver Reject closed with "42501: new row violates row-level security
+-- policy" (observed in prod 2026-07-20: reject rolled back, so the call kept
+-- ringing until someone accepted it). A bare DISABLE reverts to fail-closed the
+-- next time someone opens the table in the UI, so instead we ENABLE RLS with a
+-- PERMISSIVE policy: writes succeed regardless. The app is anon-key with no
+-- Clerk token yet, so this permissive policy stands in until the Clerk-JWT
+-- cutover swaps in the owner-scoped policies below.
+ALTER TABLE public.sos_request_declines ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "sos_request_declines permissive rw" ON public.sos_request_declines;
+CREATE POLICY "sos_request_declines permissive rw" ON public.sos_request_declines
+  FOR ALL TO anon, authenticated
+  USING (true) WITH CHECK (true);
 
 -- -----------------------------------------------------------------------------
 -- STAGED: enable together with the Clerk-JWT cutover, NOT before.
