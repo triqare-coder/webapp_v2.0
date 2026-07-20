@@ -44,6 +44,13 @@ export interface SendResult {
   failed: number
   /** Tokens FCM reports as permanently dead — the caller should stop storing them. */
   invalidTokens: string[]
+  /**
+   * True when nothing was even attempted because the sender is not configured
+   * (FIREBASE_SERVICE_ACCOUNT missing or unparseable). Without this, that case is
+   * indistinguishable from "FCM rejected the send" — both report failed=N — which
+   * sent a live debug down the wrong path for hours.
+   */
+  notConfigured?: boolean
 }
 
 let app: App | null = null
@@ -91,7 +98,9 @@ export async function sendToTokens(tokens: string[], payload: PushPayload): Prom
   if (unique.length === 0) return { sent: 0, failed: 0, invalidTokens: [] }
 
   const firebase = getFirebaseApp()
-  if (!firebase) return { sent: 0, failed: unique.length, invalidTokens: [] }
+  if (!firebase) {
+    return { sent: 0, failed: unique.length, invalidTokens: [], notConfigured: true }
+  }
 
   const priority = payload.priority ?? 'high'
 

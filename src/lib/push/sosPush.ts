@@ -34,6 +34,14 @@ export interface DispatchResult {
   recipients: number
   sent: number
   failed: number
+  /**
+   * Set when the sender itself is not configured (FIREBASE_SERVICE_ACCOUNT missing
+   * or unparseable on this deploy) — i.e. nothing was sent because we couldn't even
+   * initialise Firebase, NOT because FCM rejected anything. Surfaced in the webhook
+   * response so a misconfigured deploy is obvious instead of looking like a
+   * delivery failure.
+   */
+  notConfigured?: boolean
 }
 
 interface SOSRow {
@@ -329,9 +337,23 @@ export async function dispatchSOSPush(t: SOSTransition): Promise<DispatchResult>
   const result = await sendToTokens(tokens, buildPayload(event, row))
   await pruneInvalidTokens(supabase, result.invalidTokens)
 
-  console.log(
-    `[push] ${event} for ${row.id}: ${result.sent}/${tokens.length} delivered${result.failed ? `, ${result.failed} failed` : ''}`
-  )
+  if (result.notConfigured) {
+    // Loud and unambiguous: nothing was sent because the SENDER is misconfigured
+    // on this deploy, not because FCM refused anything.
+    console.error(
+      `[push] ${event} for ${row.id}: NOT SENT — FIREBASE_SERVICE_ACCOUNT missing/unparseable on this deploy (set it and redeploy)`
+    )
+  } else {
+    console.log(
+      `[push] ${event} for ${row.id}: ${result.sent}/${tokens.length} delivered${result.failed ? `, ${result.failed} failed` : ''}`
+    )
+  }
 
-  return { event, recipients: tokens.length, sent: result.sent, failed: result.failed }
+  return {
+    event,
+    recipients: tokens.length,
+    sent: result.sent,
+    failed: result.failed,
+    ...(result.notConfigured ? { notConfigured: true } : {}),
+  }
 }
