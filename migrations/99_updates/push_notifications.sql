@@ -25,16 +25,21 @@
 --
 --   3. Seed the dispatch radius config the driver app already reads.
 --
--- The webhook target and its bearer secret are read from database-level GUCs so
--- the secret is never stored in a PostgREST-readable table. Set them once, as a
--- superuser, on the Supabase project (SQL editor):
+-- The webhook target + bearer secret configuration:
 --
---   ALTER DATABASE postgres SET app.push_dispatch_url    = 'https://<site>/api/push/dispatch';
+-- The clean design reads them from database-level GUCs (below), BUT managed
+-- Supabase BLOCKS `ALTER DATABASE ... SET` for the SQL-editor role with
+-- `ERROR: 42501: permission denied to set parameter` — you are not a superuser.
+--   ALTER DATABASE postgres SET app.push_dispatch_url    = 'https://<site>/api/push/dispatch';  -- FAILS on Supabase (42501)
 --   ALTER DATABASE postgres SET app.push_dispatch_secret = '<same value as PUSH_DISPATCH_SECRET env>';
 --
--- and then reconnect (the setting is read per-session). Until app.push_dispatch_url
--- is set, the trigger is a silent no-op — so this migration is safe to apply before
--- the web app that serves /api/push/dispatch has been deployed.
+-- WORKAROUND used in production (2026-07-16): bake the URL + secret directly into
+-- the notify_push_on_sos_change() function body via CREATE OR REPLACE (which the
+-- owner role IS allowed to run). The function is SECURITY DEFINER and its body is
+-- NOT readable by the anon/PostgREST client, so the secret is not client-exposed.
+-- See the CREATE OR REPLACE variant below (dispatch_url/dispatch_secret literals).
+-- Until configured, the trigger is a silent no-op, so this migration is safe to
+-- apply before the web app that serves /api/push/dispatch has been deployed.
 
 -- ---------------------------------------------------------------
 -- 1a. users.fcm_token — the device token the sender pushes to
