@@ -93,6 +93,9 @@ export async function PUT(
 
     return NextResponse.json({
       user: result.data,
+      // Set when the update succeeded but did less than the caller likely assumes
+      // (e.g. an email change on a record with no linked login).
+      ...(result.warning ? { warning: result.warning } : {}),
       success: true
     })
   } catch (error) {

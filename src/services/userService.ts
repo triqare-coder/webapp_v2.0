@@ -176,9 +176,10 @@ export class UserService {
   }
 
   // Update a user by internal id
-  static async updateUser(id: string, updates: UpdateUserInput): Promise<{ data: DatabaseUser | null; error: string | null }> {
+  static async updateUser(id: string, updates: UpdateUserInput): Promise<{ data: DatabaseUser | null; error: string | null; warning?: string }> {
     try {
       const updateData: any = { ...updates, updated_at: new Date().toISOString() }
+      let warning: string | undefined
 
       // An email change has to reach the LOGIN as well as the profile row.
       // public.users.email is only what the dashboard displays; the credential
@@ -197,13 +198,25 @@ export class UserService {
           .eq('id', id)
           .maybeSingle()
 
-        if (current && current.email?.toLowerCase() !== nextEmail && current.auth_user_id) {
-          const { error: authError } = await supabase.auth.admin.updateUserById(current.auth_user_id, {
-            email: nextEmail,
-            email_confirm: true, // admin-set address; no re-confirmation round trip
-          })
-          if (authError) {
-            return { data: null, error: `Could not change the login email: ${authError.message}` }
+        if (current && current.email?.toLowerCase() !== nextEmail) {
+          if (current.auth_user_id) {
+            const { error: authError } = await supabase.auth.admin.updateUserById(current.auth_user_id, {
+              email: nextEmail,
+              email_confirm: true, // admin-set address; no re-confirmation round trip
+            })
+            if (authError) {
+              return { data: null, error: `Could not change the login email: ${authError.message}` }
+            }
+          } else {
+            // No linked auth account, so there is no credential to move. The
+            // profile change is still worth keeping — the link-by-email trigger
+            // attaches whichever auth account later signs up at this address — but
+            // it must not report back as a completed login change. Silently
+            // succeeding here is how an admin comes away believing the sign-in
+            // address changed when nothing about signing in has changed at all.
+            warning =
+              `The address shown was updated, but this record has no linked login, ` +
+              `so no sign-in email was changed. Whoever signs up as ${nextEmail} will be linked to it.`
           }
         }
       }
@@ -218,7 +231,7 @@ export class UserService {
         console.error('Error updating user:', error)
         return { data: null, error: error.message }
       }
-      return { data, error: null }
+      return { data, error: null, warning }
     } catch (err) {
       console.error('Unexpected error updating user:', err)
       return { data: null, error: 'Failed to update user' }

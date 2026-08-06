@@ -157,6 +157,10 @@ export default function EditTransportCompanyPage({ params }: { params: Promise<{
         setContactError(result.error || 'Failed to update the contact details.')
         return false
       }
+      // Saved, but the login half may not have moved with it. Held long enough to
+      // actually be read, because the alternative is an admin assuming the
+      // sign-in address changed when it did not.
+      if (result.warning) toast.warning(result.warning, { duration: 10000 })
       return true
     } catch {
       setContactError('Failed to update the contact details.')
