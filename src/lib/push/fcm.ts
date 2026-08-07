@@ -279,6 +279,25 @@ export async function sendToTokens(tokens: string[], payload: PushPayload): Prom
           { critical: true, name: soundName, volume: 1.0 }
         : soundName
 
+    /**
+     * How hard iOS is allowed to interrupt for this notification.
+     *
+     * `time-sensitive` breaks through Do Not Disturb and every Focus mode — the gap that
+     * matters here, since drivers keep a Focus on between calls and a suppressed dispatch
+     * is one nobody hears. It needs the
+     * `com.apple.developer.usernotifications.time-sensitive` entitlement, which is free
+     * (an App ID checkbox, no Apple review) and is in the signed build's profile.
+     *
+     * `critical` goes further and also defeats Silent Mode, but rides on the
+     * review-gated critical-alerts entitlement, so it is tied to the same flag as the
+     * critical sound above — the two must agree or APNs gets a payload claiming a
+     * privilege the build does not hold.
+     *
+     * Set for the dispatch only. Interrupting a Focus mode to say "trip complete" is
+     * exactly the abuse that gets an entitlement pulled.
+     */
+    const interruptionLevel = IOS_CRITICAL_ALERTS ? 'critical' : 'time-sensitive'
+
     const apns = iosAlert
       ? {
           payload: {
@@ -288,6 +307,7 @@ export async function sendToTokens(tokens: string[], payload: PushPayload): Prom
               alert: { title: payload.title, body: payload.body },
               sound,
               badge: 1,
+              ...(isDispatch ? { 'interruption-level': interruptionLevel } : {}),
             },
           },
           headers: {

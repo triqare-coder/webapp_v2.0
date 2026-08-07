@@ -180,6 +180,30 @@ describe('iOS ring duration', () => {
     }
   })
 
+  it('marks the dispatch time-sensitive so a Focus mode cannot swallow it', async () => {
+    const message = await send({ dataOnly: true, iosAlert: true })
+    expect(message.apns.payload.aps['interruption-level']).toBe('time-sensitive')
+  })
+
+  it('escalates the interruption level with the sound, never independently', async () => {
+    // A payload claiming `critical` while the build lacks the entitlement is the failure
+    // mode to avoid, so the two must move together.
+    process.env.IOS_CRITICAL_ALERTS = '1'
+    try {
+      const message = await send({ dataOnly: true, iosAlert: true })
+      expect(message.apns.payload.aps['interruption-level']).toBe('critical')
+      expect(message.apns.payload.aps.sound.critical).toBe(true)
+    } finally {
+      delete process.env.IOS_CRITICAL_ALERTS
+    }
+  })
+
+  it('leaves lifecycle pushes at the default interruption level', async () => {
+    // Interrupting a Focus mode for "trip complete" is what gets an entitlement pulled.
+    const message = await send()
+    expect(message.apns.payload.aps['interruption-level']).toBeUndefined()
+  })
+
   it('never makes a lifecycle push critical, even with the flag on', async () => {
     process.env.IOS_CRITICAL_ALERTS = '1'
     try {
