@@ -43,6 +43,39 @@ const SOS_SOUND_ANDROID = 'sos_alert'
 const SOS_SOUND_IOS = 'sos_alert.wav'
 
 /**
+ * A 27.7s loop of the same siren, for the driver's dispatch alert on iOS only.
+ *
+ * iOS plays a notification sound exactly ONCE and caps it at 30 seconds. There is no
+ * looping flag — Android's continuous ring comes from notifee re-raising the alert, and
+ * nothing equivalent exists here. So the only way to make an iOS dispatch ring instead
+ * of blip is to ship a long file: 2.31s becomes 27.7s of siren, which is the practical
+ * ceiling without Apple's Critical Alerts entitlement.
+ *
+ * Bundled by the expo-notifications plugin's `sounds` array in app.json. If that entry
+ * is ever removed, iOS silently falls back to the DEFAULT chime — it does not error.
+ */
+const SOS_SOUND_IOS_LONG = 'sos_alert_long.wav'
+
+/**
+ * Send the dispatch as an APNs *critical* alert: rings at a caller-set volume even in
+ * Silent Mode, Do Not Disturb and any Focus mode, and shows without the user having to
+ * unlock. This is the closest iOS gets to Android's full-screen insistent siren.
+ *
+ * OFF BY DEFAULT AND MUST STAY THAT WAY UNTIL APPLE APPROVES. Critical alerts need the
+ * `com.apple.developer.usernotifications.critical-alerts` entitlement, granted per-app
+ * by a review form, and the entitlement must be in the signed build's provisioning
+ * profile. Sending `critical: 1` to a build without it does not upgrade the alert — APNs
+ * can reject the push outright, which would mean NO dispatch alert at all rather than a
+ * merely quiet one. So this stays behind an env flag that is flipped only once an
+ * approved build is live.
+ *
+ * Enable with IOS_CRITICAL_ALERTS=1 once, and only once, both are true:
+ *   1. Apple has approved the entitlement for com.triqare.qsos, AND
+ *   2. a build carrying that entitlement is the one installed on testers' phones.
+ */
+const IOS_CRITICAL_ALERTS = process.env.IOS_CRITICAL_ALERTS === '1'
+
+/**
  * Fallback time-to-live for any push that does not set its own.
  *
  * FCM's own default is FOUR WEEKS: a message sent to an unreachable device is
@@ -93,6 +126,26 @@ export interface PushPayload {
    * `title`/`body` are copied into `data` so the app still has the copy to display.
    */
   dataOnly?: boolean
+  /**
+   * For a `dataOnly` send, ALSO give iOS a real alert (title/body/sound) instead of a
+   * silent `content-available` push.
+   *
+   * Android and iOS need opposite things from the dispatch alert, and this flag is
+   * where they part company. On Android, data-only is what lets notifee draw the
+   * looping full-screen siren. On iOS there is no equivalent: nothing renders a
+   * data-only push, `sos-call-notification.ts` is Android-gated, and a continuous
+   * siren needs Apple's Critical Alerts entitlement. Sent as-is, an iOS driver got a
+   * silent background wake-up and NO visible alert for a new SOS.
+   *
+   * Setting this puts an explicit `aps.alert` in the apns block, which FCM delivers
+   * only to Apple devices — Android still receives a pure data message. The result on
+   * iOS is an OS-rendered banner with the SOS ringtone: one-shot rather than looping,
+   * but seen and heard.
+   *
+   * Leave it off for control pushes whose job is to SILENCE an alert (the stand-down),
+   * where a banner would be the exact opposite of what is wanted.
+   */
+  iosAlert?: boolean
 }
 
 export interface SendResult {
@@ -205,6 +258,56 @@ export async function sendToTokens(tokens: string[], payload: PushPayload): Prom
   try {
     const dataOnly = payload.dataOnly === true
 
+    // Whether Apple devices get a visible alert. Everything with a `notification`
+    // block does; a data-only send only does when it opts in (see `iosAlert`).
+    const iosAlert = !dataOnly || payload.iosAlert === true
+
+    // The apns block is built once, because the two shapes differ in more than the
+    // payload: a SILENT push must declare `apns-push-type: background` and be sent at
+    // priority 5. APNs rejects a background push at priority 10 outright
+    // (`BadPriority`), so the message's own high priority cannot be passed through here.
+    // Only the dispatch (the one push that must actually ring) gets the long siren; a
+    // "driver arrived" banner ringing for half a minute would be its own problem.
+    const isDispatch = dataOnly && payload.iosAlert === true
+    const soundName = isDispatch ? SOS_SOUND_IOS_LONG : SOS_SOUND_IOS
+    const sound =
+      isDispatch && IOS_CRITICAL_ALERTS
+        ? // The critical form is an OBJECT, not a string. firebase-admin takes a boolean
+          // here and serializes it to APNs' `"critical": 1` itself. `volume` is 0–1 and
+          // overrides the device volume, so it is deliberately full: a driver who
+          // silenced their phone still has to hear an ambulance dispatch.
+          { critical: true, name: soundName, volume: 1.0 }
+        : soundName
+
+    const apns = iosAlert
+      ? {
+          payload: {
+            aps: {
+              // Set explicitly rather than relying on FCM's mapping of the top-level
+              // `notification` block, since data-only sends have no such block.
+              alert: { title: payload.title, body: payload.body },
+              sound,
+              badge: 1,
+            },
+          },
+          headers: {
+            'apns-push-type': 'alert',
+            'apns-priority': priority === 'high' ? '10' : '5',
+            'apns-expiration': apnsExpiration,
+          },
+        }
+      : {
+          // `content-available` is what makes iOS deliver a silent data push to the
+          // app. NOTE iOS cannot loop a sound from one of these — a continuous siren
+          // there needs the Critical Alerts entitlement from Apple. Android only for now.
+          payload: { aps: { 'content-available': 1 } },
+          headers: {
+            'apns-push-type': 'background',
+            'apns-priority': '5',
+            'apns-expiration': apnsExpiration,
+          },
+        }
+
     // A `notification` block means Android/iOS render the tray notification
     // themselves when the app is backgrounded or killed — no JS runs. The `data`
     // block rides along for tap-routing. Foreground delivery has no OS-rendered
@@ -220,16 +323,7 @@ export async function sendToTokens(tokens: string[], payload: PushPayload): Prom
           // No notification block, so the copy has to travel in `data`.
           data: { ...payload.data, title: payload.title, body: payload.body },
           android: { priority, ttl: ttlSeconds * 1000 },
-          apns: {
-            // `content-available` is what makes iOS deliver a silent data push to the
-            // app. NOTE iOS cannot loop a sound from one of these — a continuous siren
-            // there needs the Critical Alerts entitlement from Apple. Android only for now.
-            payload: { aps: { 'content-available': 1 } },
-            headers: {
-              'apns-priority': priority === 'high' ? '10' : '5',
-              'apns-expiration': apnsExpiration,
-            },
-          },
+          apns,
         }
       : {
           tokens: unique,
@@ -248,13 +342,7 @@ export async function sendToTokens(tokens: string[], payload: PushPayload): Prom
               defaultVibrateTimings: true,
             },
           },
-          apns: {
-            payload: { aps: { sound: SOS_SOUND_IOS, badge: 1 } },
-            headers: {
-              'apns-priority': priority === 'high' ? '10' : '5',
-              'apns-expiration': apnsExpiration,
-            },
-          },
+          apns,
         }
 
     const response = await getMessaging(firebase).sendEachForMulticast(message)

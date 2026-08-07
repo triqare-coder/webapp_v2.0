@@ -452,13 +452,17 @@ function buildPayload(event: SOSPushEvent, row: SOSRow): PushPayload {
       return {
         title: '🚨 New SOS request',
         body: `${patient} needs emergency transport. Tap to view and accept.`,
-        // The ONLY data-only push we send. Drivers must hear a continuous siren
-        // even with the app killed, and that is impossible for an OS-rendered
-        // notification: the OS plays the channel sound once and never runs our JS.
-        // Data-only routes this to the app's headless handler in every app state,
-        // which displays it via notifee with a looping siren and a full-screen
-        // intent. See Triqare-app/services/sos-call-notification.ts.
+        // Data-only, because ANDROID drivers must hear a continuous siren even with
+        // the app killed, and that is impossible for an OS-rendered notification: the
+        // OS plays the channel sound once and never runs our JS. Data-only routes this
+        // to the app's headless handler in every app state, which displays it via
+        // notifee with a looping siren and a full-screen intent.
+        // See Triqare-app/services/sos-call-notification.ts.
         dataOnly: true,
+        // …but iOS has no such renderer, so data-only alone showed an iOS driver
+        // NOTHING at all for a new SOS. This gives Apple devices an OS-rendered
+        // banner + ringtone while Android keeps the pure data message.
+        iosAlert: true,
         data: {
           type: 'sos_new_request',
           requestId: row.id,
