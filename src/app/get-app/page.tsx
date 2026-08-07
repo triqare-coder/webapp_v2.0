@@ -18,11 +18,16 @@ import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/appLinks'
  * itself. That is a first-class Android mechanism: no timers, no guessing, and no
  * error dialog when the app is missing.
  *
- * iOS has no such mechanism, so it gets the classic race: ask for the custom
- * scheme, and if we are still on screen a moment later, conclude nothing handled
- * it and go to the App Store. `pagehide`/`visibilitychange` cancel the fallback
- * when the app DOES open — without that, a user who gets handed off to the app
- * comes back to Safari sitting on the App Store page.
+ * iOS GOES STRAIGHT TO THE APP STORE. It has no intent: equivalent, and the
+ * obvious substitute — request `qsos://` and race a timer to the store — is worse
+ * than useless: when nothing handles the scheme Safari puts up a modal "cannot
+ * open the page because the address is invalid", and that modal BLOCKS the
+ * fallback timer. The visitor is left staring at an error instead of the store.
+ * Since the people scanning a card or opening an invite are overwhelmingly people
+ * who do NOT have the app yet, we optimise for them. Anyone who does have it
+ * installed lands on a listing whose button already reads "Open" — one tap, no
+ * error. A real installed-app handoff on iOS needs Universal Links, not a scheme
+ * probe (see below).
  *
  * DESKTOP gets neither; it just shows both badges, because there is nothing to
  * open and silently redirecting a laptop to a phone store is a dead end.
@@ -36,7 +41,6 @@ import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/appLinks'
 
 const APP_SCHEME_URL = 'qsos://'
 const ANDROID_PACKAGE = 'com.sosapp.emergency'
-const IOS_FALLBACK_MS = 1500
 
 type Platform = 'android' | 'ios' | 'desktop'
 
@@ -66,28 +70,9 @@ export default function GetAppPage() {
     }
 
     if (detected === 'ios') {
-      let cancelled = false
-      // If the app takes over, this tab is backgrounded — that is our only signal
-      // that the scheme was handled, so use it to call off the store redirect.
-      const cancel = () => {
-        cancelled = true
-      }
-      const onVisibility = () => {
-        if (document.visibilityState === 'hidden') cancel()
-      }
-      window.addEventListener('pagehide', cancel)
-      document.addEventListener('visibilitychange', onVisibility)
-
-      window.location.href = APP_SCHEME_URL
-      const timer = window.setTimeout(() => {
-        if (!cancelled) window.location.replace(APP_STORE_URL)
-      }, IOS_FALLBACK_MS)
-
-      return () => {
-        window.clearTimeout(timer)
-        window.removeEventListener('pagehide', cancel)
-        document.removeEventListener('visibilitychange', onVisibility)
-      }
+      // No scheme probe first — see the note above. An https apps.apple.com URL
+      // is itself handed to the App Store app by iOS, so this is a direct open.
+      window.location.replace(APP_STORE_URL)
     }
   }, [])
 
@@ -99,7 +84,7 @@ export default function GetAppPage() {
         <h1 className="text-2xl font-semibold text-slate-900">TriQare QSoS</h1>
         <p className="mt-3 text-slate-600">
           {isMobile
-            ? 'Opening the app… if nothing happens, use the link below to install it.'
+            ? 'One moment — taking you to your app store. If nothing happens, use the button below.'
             : 'QSoS is a mobile app. Install it on your phone to continue.'}
         </p>
 
@@ -122,7 +107,11 @@ export default function GetAppPage() {
           )}
         </div>
 
-        {isMobile && (
+        {/* Android only. On iOS this same link produces the Safari "address is
+            invalid" modal for anyone who does not have the app — the very error
+            this page exists to avoid — and iPhone users are already on their way
+            to a listing whose button reads "Open" when it is installed. */}
+        {platform === 'android' && (
           <p className="mt-6 text-sm text-slate-500">
             Already installed?{' '}
             <a href={APP_SCHEME_URL} className="font-semibold text-[#cc3333] underline">
