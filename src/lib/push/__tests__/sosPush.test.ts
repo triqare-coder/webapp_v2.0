@@ -98,6 +98,23 @@ describe('classify', () => {
     ).toBe('sos.no_driver')
   })
 
+  it('reads an untagged Timed Out entry on a Cancelled row as no-driver', () => {
+    // What live really writes today: the row's status check rejects 'Timed Out',
+    // the write retries as 'Cancelled', and the already-built history entry keeps
+    // the true outcome in its own status with no actor tag. Classifying that as a
+    // cancel sent contacts an all-clear for an emergency nobody ever answered.
+    const untaggedTimeout = row({
+      status: 'Cancelled',
+      status_history: JSON.stringify([
+        { status: 'SOS Triggered', timestamp: '2026-08-07T22:13:22.268Z', actor: 'patient' },
+        { status: 'Timed Out', timestamp: '2026-08-07T22:18:22.847Z' },
+      ]),
+    })
+    expect(
+      classify(untaggedTimeout, transition({ oldStatus: 'SOS Triggered', newStatus: 'Cancelled' }))
+    ).toBe('sos.no_driver')
+  })
+
   it('treats a patient cancel as a cancel even with history present', () => {
     const userCancel = row({
       status: 'Cancelled',

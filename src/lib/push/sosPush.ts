@@ -106,7 +106,14 @@ function isSystemTimeout(row: SOSRow, newStatus: string): boolean {
   try {
     const history = row.status_history ? JSON.parse(row.status_history) : []
     if (!Array.isArray(history) || history.length === 0) return false
-    return history[history.length - 1]?.actor === 'system'
+    const last = history[history.length - 1]
+    // Two signals, not one. When the live status CHECK still rejects 'Timed Out'
+    // the write retries as 'Cancelled' and the history entry it carries can be an
+    // untagged {status:'Timed Out'} (real live shape). Keying only on the actor
+    // tag classified those as sos.cancelled — so the patient never got the
+    // no-driver push, and their contacts got an all-clear for an emergency that
+    // was never answered.
+    return last?.actor === 'system' || last?.status === 'Timed Out'
   } catch {
     return false
   }
