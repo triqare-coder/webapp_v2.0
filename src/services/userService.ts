@@ -9,6 +9,48 @@ import { createServerClient } from '@/lib/supabase/server'
  */
 const supabase = createServerClient()
 
+/**
+ * Escape PostgREST `ilike` metacharacters so an address is matched literally.
+ * Without this a local part containing `%` matches unrelated rows — the same
+ * wildcard-in-a-lookup trap that once widened an authorisation check.
+ */
+function escapeLikePattern(value: string): string {
+  return value.replace(/([\\%_])/g, '\\$1')
+}
+
+/**
+ * Turn a GoTrue admin-API failure into something an operator can act on.
+ *
+ * Moving a login onto an address another auth account already holds is not
+ * rejected cleanly: the duplicate reaches the unique index and GoTrue returns a
+ * 500 whose message is either a raw Postgres unique-violation or the catch-all
+ * "Error updating user". Neither names the real problem.
+ */
+function describeAuthError(message: string): string {
+  const lowered = message.toLowerCase()
+  const isDuplicate =
+    lowered.includes('duplicate key') ||
+    lowered.includes('already been registered') ||
+    lowered.includes('already exists') ||
+    lowered.includes('users_email_partial_key')
+
+  if (isDuplicate) {
+    return 'that address is already registered to another login. Use a different address.'
+  }
+
+  // GoTrue's catch-all. It is most often the duplicate address, but it covers
+  // other internal failures too, so the wording stays hedged rather than
+  // asserting a cause we have not established.
+  if (lowered === 'error updating user') {
+    return (
+      'the login service rejected the change. This is usually because the address ' +
+      'is already registered to another login — try a different address.'
+    )
+  }
+
+  return message
+}
+
 export class UserService {
   // Create a new user row directly (no Clerk, no auto-sync). For login-capable
   // accounts the Supabase auth user is created via supabase.auth.admin.createUser
@@ -199,13 +241,38 @@ export class UserService {
           .maybeSingle()
 
         if (current && current.email?.toLowerCase() !== nextEmail) {
+          // Refuse up front when the address belongs to someone else. GoTrue does
+          // not fail cleanly here: the duplicate reaches the unique index on
+          // auth.users and comes back as a 500, surfacing to the operator as
+          // "Error updating user" — which names neither the field at fault nor
+          // the account holding it. Checked here so the message can say both.
+          const { data: conflict } = await supabase
+            .from('users')
+            .select('id, email, role')
+            .ilike('email', escapeLikePattern(nextEmail))
+            .neq('id', id)
+            .maybeSingle()
+
+          if (conflict) {
+            return {
+              data: null,
+              error:
+                `${nextEmail} is already used by another Triqare account ` +
+                `(${conflict.role || 'unknown role'}). An address can only belong to one ` +
+                `account, so free it up there first or use a different address.`,
+            }
+          }
+
           if (current.auth_user_id) {
             const { error: authError } = await supabase.auth.admin.updateUserById(current.auth_user_id, {
               email: nextEmail,
               email_confirm: true, // admin-set address; no re-confirmation round trip
             })
             if (authError) {
-              return { data: null, error: `Could not change the login email: ${authError.message}` }
+              // The pre-check above catches the common case, but an auth account
+              // with no profile row still collides here, and GoTrue reports it as
+              // an opaque 500. Translate rather than pass it through.
+              return { data: null, error: `Could not change the login email: ${describeAuthError(authError.message)}` }
             }
           } else {
             // No linked auth account, so there is no credential to move. The
