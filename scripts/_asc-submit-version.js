@@ -110,7 +110,7 @@ const errs = (res) =>
     data: { type: 'builds', id: BUILD_ID },
   })
   if (attached.status !== 204) return console.log(`✗ attaching the build failed (${attached.status}):\n    ${errs(attached)}`)
-  console.log('✓ build 6 attached')
+  console.log(`✓ build attached (${BUILD_ID})`)
 
   if (!SUBMIT) return console.log('\nSUBMIT=0 — stopping before review submission.')
 
