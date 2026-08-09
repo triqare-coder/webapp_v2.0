@@ -18,6 +18,13 @@ const PUBLIC_PREFIXES = [
   // no session and by definition does not have the app yet — bouncing them to
   // /sign-in is the one outcome that makes the link useless.
   '/get-app',
+  // Support and Privacy Policy. Both stores require these URLs to answer for
+  // anyone, and App Review rejected 2.0.2 under Guideline 1.5 when the old ones
+  // (www.triqare.in) stopped resolving. Bouncing a reviewer — or a user locked
+  // out of their account — to /sign-in fails the same guideline, so these must
+  // stay public.
+  '/support',
+  '/privacy-policy',
   '/mobile-app-required',
   '/test-mobile-redirect',
   '/api/webhooks',
