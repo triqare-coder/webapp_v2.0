@@ -59,7 +59,7 @@ const anon = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE
   // contact + both hospitals.
   const { data: patient } = await admin
     .from('patients')
-    .select('user_id,date_of_birth,gender,address,city,state,pincode,blood_group,primary_hospital_id,secondary_hospital_id')
+    .select('user_id,dob,gender,address_line,blood_group,latitude,longitude,primary_hospital_id,secondary_hospital_id')
     .eq('user_id', row.id)
     .maybeSingle()
   const { data: contacts } = await admin
@@ -70,8 +70,8 @@ const anon = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE
   console.log('\n=== what App Review would see after logging in ===')
   console.log(' patients row      :', patient ? 'present' : 'MISSING')
   if (patient) {
-    const missing = ['date_of_birth', 'gender', 'address', 'city', 'state', 'pincode', 'blood_group']
-      .filter((k) => !patient[k])
+    // Column names as the LIVE table has them, not as the app's types spell them.
+    const missing = ['dob', 'gender', 'address_line', 'blood_group'].filter((k) => !patient[k])
     console.log(' profile gaps      :', missing.length ? missing.join(', ') : 'none')
     console.log(' primary hospital  :', patient.primary_hospital_id ? 'set' : 'NOT SET')
     console.log(' secondary hospital:', patient.secondary_hospital_id ? 'set' : 'NOT SET')
