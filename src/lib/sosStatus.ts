@@ -74,6 +74,16 @@ export function isTerminalStatus(status?: string | null): boolean {
   return (SOS_TERMINAL_STATUSES as readonly string[]).includes(status ?? '')
 }
 
+/**
+ * The in-flight statuses — the complement of SOS_TERMINAL_STATUSES. Dashboards
+ * count "active emergencies" with this; using `.in(SOS_ACTIVE_STATUSES)` instead
+ * of a hand-written `not in (completed, cancelled)` is what keeps a query honest
+ * when a new terminal state (like 'Timed Out') is added.
+ */
+export const SOS_ACTIVE_STATUSES = SOS_STATUSES.filter(
+  (s) => !(SOS_TERMINAL_STATUSES as readonly string[]).includes(s)
+) as readonly SOSStatus[]
+
 export function isActiveStatus(status?: string | null): boolean {
   return !!status && !isTerminalStatus(status)
 }

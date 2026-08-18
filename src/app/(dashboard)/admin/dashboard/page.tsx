@@ -24,18 +24,12 @@ import { toast } from 'sonner'
 
 interface AdminDashboardStats {
   totalUsers: number
+  totalPatients: number
   totalHospitals: number
   activeEmergencies: number
   totalDrivers: number
-  systemUptime: string
+  completedToday: number
   avgResponseTime: string
-  systemAlerts: Array<{
-    id: number
-    type: string
-    message: string
-    timestamp: string
-    severity: string
-  }>
   roleDistribution: Record<string, number>
   recentActivity: {
     newSOS: number
@@ -102,27 +96,26 @@ export default function AdminDashboardPage() {
     }
   }
 
-  // Mock recent activities for now - would be replaced with real API
   const recentActivities = [
     {
       id: 1,
-      action: 'System Status',
-      details: `${stats?.recentActivity.newUsers || 0} new users registered today`,
-      timestamp: 'Today',
+      action: 'New Registrations',
+      details: `${stats?.recentActivity.newUsers ?? 0} new users registered in the last 24 hours`,
+      timestamp: 'Last 24 hours',
       type: 'user',
     },
     {
       id: 2,
       action: 'Emergency Activity',
-      details: `${stats?.recentActivity.newSOS || 0} new SOS requests in last 24 hours`,
+      details: `${stats?.recentActivity.newSOS ?? 0} new SOS requests in the last 24 hours`,
       timestamp: 'Last 24 hours',
       type: 'emergency',
     },
     {
       id: 3,
-      action: 'System Health',
-      details: `System uptime: ${stats?.systemUptime || 'N/A'}`,
-      timestamp: 'Current',
+      action: 'Resolved Today',
+      details: `${stats?.completedToday ?? 0} emergencies reached hospital today`,
+      timestamp: 'Today',
       type: 'system',
     },
   ]
@@ -178,40 +171,15 @@ export default function AdminDashboardPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Total Users" value={stats.totalUsers} sub={`${stats.recentActivity.newUsers} new today`} icon={Users} tint="navy" />
+          <StatCard label="Total Users" value={stats.totalUsers} sub={`${stats.recentActivity.newUsers} new in last 24h`} icon={Users} tint="navy" />
+          <StatCard label="Patients" value={stats.totalPatients} sub="Registered patients" icon={Activity} tint="navy" />
           <StatCard label="Hospitals" value={stats.totalHospitals} sub="Across the network" icon={Building2} tint="navy" />
           <StatCard label="Active Emergencies" value={stats.activeEmergencies} sub={stats.activeEmergencies > 0 ? 'Requires attention' : 'All clear'} icon={AlertTriangle} tint="red" />
-          <StatCard label="System Uptime" value={stats.systemUptime} sub="Last 30 days" icon={Activity} tint="emerald" />
-          <StatCard label="Avg Response Time" value={stats.avgResponseTime} sub="Recent average" icon={Clock} tint="amber" />
+          <StatCard label="Avg Response Time" value={stats.avgResponseTime} sub="SOS raised to driver assigned" icon={Clock} tint="amber" />
           <StatCard label="Total Drivers" value={stats.totalDrivers} sub="Registered drivers" icon={UserCheck} tint="navy" />
-          <StatCard label="System Alerts" value={stats.systemAlerts.length} sub={stats.systemAlerts.length === 0 ? 'All systems operational' : 'Active alerts'} icon={TrendingUp} tint="emerald" />
+          <StatCard label="Resolved Today" value={stats.completedToday} sub="Reached hospital today" icon={TrendingUp} tint="emerald" />
+          <StatCard label="SOS (24h)" value={stats.recentActivity.newSOS} sub="Raised in last 24 hours" icon={Shield} tint="red" />
         </div>
-
-        {/* System Alerts */}
-        {stats.systemAlerts.length > 0 && (
-          <div className={`${CARD} p-6`}>
-            <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100"><AlertTriangle className="h-4 w-4 text-amber-600" /></span>
-              System Alerts
-            </h2>
-            <div className="space-y-2.5">
-              {stats.systemAlerts.map((alert) => (
-                <div key={alert.id} className="flex items-center gap-4 rounded-2xl bg-slate-50 px-4 py-3">
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${alert.severity === 'high' ? TINT.red : alert.severity === 'medium' ? TINT.amber : TINT.navy}`}>
-                    <AlertTriangle className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-900">{alert.type.toUpperCase()}</p>
-                    <p className="truncate text-xs text-slate-500">{alert.message}</p>
-                  </div>
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${alert.severity === 'high' ? TINT.red : alert.severity === 'medium' ? TINT.amber : 'bg-slate-200 text-slate-600'}`}>
-                    {alert.severity}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* System Overview + Role distribution */}
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">

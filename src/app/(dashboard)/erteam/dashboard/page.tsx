@@ -28,6 +28,7 @@ import { toast } from 'sonner'
 import { useSOSRequestsRealtime } from '@/hooks/useSOSRequestsRealtime'
 import { useERTDriversRealtime } from '@/hooks/useERTDriversRealtime'
 import { SOSRequest } from '@/services/sosService'
+import { isActiveStatus } from '@/lib/sosStatus'
 
 interface ERTDashboardStats {
   activeEmergencies: number
@@ -36,14 +37,11 @@ interface ERTDashboardStats {
   avgResponseTime: string
   completedToday: number
   pendingAssignments: number
-  criticalCases: number
-  highPriorityCases: number
   activeCases: Array<{
     id: string
     patient_name: string
     patient_phone: string
     location: string
-    severity: string
     status: string
     created_at: string
     assigned_driver_id: string | null
@@ -104,10 +102,10 @@ export default function ERTDashboardPage() {
     const now = new Date()
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
-    // Active emergencies (not completed or cancelled)
-    const activeEmergencies = sosRequests.filter(sos =>
-      sos.status !== 'Arrived at Hospital' && sos.status !== 'Cancelled'
-    )
+    // Active emergencies. isActiveStatus() is the canonical complement of the
+    // terminal list (Arrived at Hospital / Cancelled / Timed Out) — spelling the
+    // terminal states out here is what left timed-out requests counting as live.
+    const activeEmergencies = sosRequests.filter(sos => isActiveStatus(sos.status))
 
     // Get driver IDs from active SOS requests
     const activeSosDriverIds = new Set<string>()
@@ -161,7 +159,6 @@ export default function ERTDashboardPage() {
       patient_name: sos.patient?.full_name || 'Unknown',
       patient_phone: sos.patient?.phone || 'N/A',
       location: sos.patient?.address_line || 'Unknown location',
-      severity: 'medium', // Default since we don't have severity in DB
       status: sos.status,
       created_at: sos.requested_at,
       assigned_driver_id: sos.assigned_driver?.id || null,
@@ -180,8 +177,6 @@ export default function ERTDashboardPage() {
       avgResponseTime,
       completedToday,
       pendingAssignments,
-      criticalCases: 0, // Not available in current schema
-      highPriorityCases: 0, // Not available in current schema
       activeCases,
       totalDrivers: drivers.length
     }
@@ -191,25 +186,26 @@ export default function ERTDashboardPage() {
   const error = sosError || driversError
   const isConnected = sosConnected && driversConnected
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'bg-red-100 text-red-800 border-red-200'
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'low': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
-    }
-  }
-
+  // Keyed on the canonical SOS statuses (src/lib/sosStatus.ts). The previous
+  // helpers matched 'pending'/'dispatched'/'en-route', none of which the DB ever
+  // stores, so every badge fell through to grey.
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'available': return 'bg-green-100 text-green-800'
-      case 'dispatched': return 'bg-blue-100 text-blue-800'
-      case 'en-route': return 'bg-purple-100 text-purple-800'
-      case 'maintenance': return 'bg-gray-100 text-gray-800'
-      case 'pending': return 'bg-yellow-100 text-yellow-800'
+      case 'SOS Triggered': return 'bg-red-100 text-red-800'
+      case 'Driver En Route': return 'bg-blue-100 text-blue-800'
+      case 'Transport Arrived': return 'bg-purple-100 text-purple-800'
+      case 'User Picked Up': return 'bg-indigo-100 text-indigo-800'
+      case 'Arrived at Hospital': return 'bg-green-100 text-green-800'
+      case 'Timed Out': return 'bg-amber-100 text-amber-800'
+      case 'Cancelled': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
+
+  // A case with no driver yet is the one that needs an operator; everything else
+  // is already moving. This replaces a severity field the schema does not have.
+  const getCaseBorder = (assignedDriverId: string | null) =>
+    assignedDriverId ? 'border-blue-200 bg-blue-50/40' : 'border-red-200 bg-red-50'
 
   if (loading) {
     return (
@@ -294,7 +290,7 @@ export default function ERTDashboardPage() {
             <CardContent>
               <div className="text-3xl font-bold text-red-700">{stats.activeEmergencies}</div>
               <p className="text-xs text-red-600">
-                {stats.criticalCases} critical, {stats.highPriorityCases} high priority
+                {stats.pendingAssignments} awaiting a driver
               </p>
             </CardContent>
           </Card>
@@ -383,18 +379,18 @@ export default function ERTDashboardPage() {
             ) : (
               <div className="space-y-4">
                 {stats.activeCases.map((emergency) => (
-                  <div key={emergency.id} className={`p-4 rounded-lg border-2 ${getPriorityColor(emergency.severity)}`}>
+                  <div key={emergency.id} className={`p-4 rounded-lg border-2 ${getCaseBorder(emergency.assigned_driver_id)}`}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-3">
                         <Badge variant="outline" className="font-mono">
-                          SOS-{emergency.id}
-                        </Badge>
-                        <Badge className={getPriorityColor(emergency.severity)}>
-                          {emergency.severity.toUpperCase()}
+                          SOS-{emergency.id.slice(0, 8)}
                         </Badge>
                         <Badge className={getStatusColor(emergency.status)}>
-                          {emergency.status.replace('_', ' ')}
+                          {emergency.status}
                         </Badge>
+                        {!emergency.assigned_driver_id && (
+                          <Badge className="bg-red-100 text-red-800">AWAITING DRIVER</Badge>
+                        )}
                       </div>
                       <span className="text-sm text-gray-500">
                         {new Date(emergency.created_at).toLocaleString()}
