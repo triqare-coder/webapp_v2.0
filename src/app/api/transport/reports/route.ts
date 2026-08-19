@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthedUser } from '@/lib/supabase/server'
+import { COMPLETED_STATUSES } from '@/lib/transport/driverDashboard'
 
 // GET /api/transport/reports - Get performance reports for the transport company
 export async function GET(request: NextRequest) {
@@ -93,9 +94,9 @@ export async function GET(request: NextRequest) {
           requested_at,
           assigned_at,
           completed_at,
-          assigned_driver_id
+          driver_id
         `)
-        .in('assigned_driver_id', driverIds)
+        .in('driver_id', driverIds)
         .gte('requested_at', startDate.toISOString())
         .order('requested_at', { ascending: false })
 
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest) {
 
     // Calculate performance metrics
     const totalRequests = sosRequests.length
-    const completedRequests = sosRequests.filter(r => r.status === 'completed').length
+    const completedRequests = sosRequests.filter(r => COMPLETED_STATUSES.includes(r.status)).length
     const activeDrivers = drivers?.filter(d => d.status === 'available' || d.status === 'on_trip' || d.status === 'assigned').length || 0
     const totalDrivers = drivers?.length || 0
 
@@ -141,7 +142,7 @@ export async function GET(request: NextRequest) {
           return reqDate === dateStr
         })
 
-        const dayCompleted = dayRequests.filter(r => r.status === 'completed').length
+        const dayCompleted = dayRequests.filter(r => COMPLETED_STATUSES.includes(r.status)).length
 
         // Calculate average response time for this day
         const dayRequestsWithTime = dayRequests.filter(r => r.requested_at && r.assigned_at)
@@ -171,8 +172,8 @@ export async function GET(request: NextRequest) {
     // Calculate real driver performance data
     const driverPerformance = drivers?.map((driver: any) => {
       // Get all SOS requests for this driver
-      const driverRequests = sosRequests.filter(r => r.assigned_driver_id === driver.user_id)
-      const driverCompleted = driverRequests.filter(r => r.status === 'completed')
+      const driverRequests = sosRequests.filter(r => r.driver_id === driver.user_id)
+      const driverCompleted = driverRequests.filter(r => COMPLETED_STATUSES.includes(r.status))
 
       // Calculate average response time for this driver
       const driverRequestsWithTime = driverRequests.filter(r => r.requested_at && r.assigned_at)
@@ -243,11 +244,11 @@ export async function GET(request: NextRequest) {
     const { data: prevPeriodRequests } = await supabase
       .from('sos_requests')
       .select('id, status')
-      .in('assigned_driver_id', driverIds)
+      .in('driver_id', driverIds)
       .gte('requested_at', prevPeriodStart.toISOString())
       .lt('requested_at', startDate.toISOString())
 
-    const prevPeriodCompleted = prevPeriodRequests?.filter(r => r.status === 'completed').length || 0
+    const prevPeriodCompleted = prevPeriodRequests?.filter(r => COMPLETED_STATUSES.includes(r.status)).length || 0
     const prevPeriodRevenue = prevPeriodCompleted * avgTripValue
 
     const monthlyGrowth = prevPeriodRevenue > 0

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { RoleGuard } from '@/components/auth/RoleGuard'
+import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -109,14 +110,13 @@ export default function TransportDashboardPage() {
   const [company, setCompany] = useState<TransportCompany | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
-      setIsLoading(true)
+      // A realtime-driven refresh must not blank the page out behind the loading
+      // spinner — it repaints in place instead.
+      if (!silent) setIsLoading(true)
       setError(null)
 
       // Fetch dashboard stats
@@ -154,14 +154,49 @@ export default function TransportDashboardPage() {
           setSOSRequests(sosData.requests || [])
         }
       }
+
+      setLastUpdatedAt(new Date())
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
-      setError('Failed to load dashboard data')
-      toast.error('Failed to load dashboard data')
+      // A background refresh that fails leaves the last good numbers on screen
+      // rather than replacing the whole dashboard with an error card.
+      if (!silent) {
+        setError('Failed to load dashboard data')
+        toast.error('Failed to load dashboard data')
+      }
     } finally {
-      setIsLoading(false)
+      if (!silent) setIsLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchDashboardData()
+  }, [fetchDashboardData])
+
+  // Always-current refresher for the realtime handlers (avoids stale closures).
+  const refreshRef = useRef<() => void>(() => {})
+  refreshRef.current = () => fetchDashboardData({ silent: true })
+
+  // Live updates: a driver going online, an SOS being raised, a status moving to
+  // the next stage — all repaint the tiles without a page refresh. Debounced so a
+  // burst of writes (assignment + status + location in one second) is one refetch.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const bump = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => refreshRef.current(), 800)
+    }
+    const channel = supabase
+      .channel('transport-company-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sos_requests' }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sos_request_assigned' }, bump)
+      .subscribe()
+    return () => {
+      if (timer) clearTimeout(timer)
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   // Use stats from API or fallback to calculated values
   const availableDrivers = stats?.availableDrivers || drivers.filter(d => d.status === 'available').length
@@ -226,7 +261,7 @@ export default function TransportDashboardPage() {
             <div className="text-center">
               <AlertTriangle className="h-8 w-8 mx-auto mb-4 text-red-600" />
               <p className="text-red-600 mb-4">{error}</p>
-              <Button onClick={fetchDashboardData}>
+              <Button onClick={() => fetchDashboardData()}>
                 Try Again
               </Button>
             </div>
@@ -252,6 +287,18 @@ export default function TransportDashboardPage() {
             </p>
           </div>
           <div className="flex items-center space-x-3">
+            <span className="flex items-center gap-1.5 text-xs text-gray-500" title="This dashboard updates itself as drivers and SOS cases change — no refresh needed">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+              </span>
+              Live
+              {lastUpdatedAt && (
+                <span className="text-gray-400">
+                  · {lastUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              )}
+            </span>
             <DownloadAppButton />
             <Badge className="bg-green-100 text-green-800">
               <Building2 className="h-3 w-3 mr-1" />

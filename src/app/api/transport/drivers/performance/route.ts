@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthedUser } from '@/lib/supabase/server'
+import { COMPLETED_STATUSES } from '@/lib/transport/driverDashboard'
 
 export async function GET(request: NextRequest) {
   try {
@@ -126,14 +127,15 @@ export async function GET(request: NextRequest) {
         const { count: totalTrips } = await supabase
           .from('sos_requests')
           .select('*', { count: 'exact', head: true })
-          .eq('assigned_driver_id', driver.user_id)
+          .eq('driver_id', driver.user_id)
 
-        // Get completed trips
+        // Get completed trips. The live status vocabulary ends at 'Arrived at
+        // Hospital' — a bare 'completed' matches no row.
         const { count: completedTrips } = await supabase
           .from('sos_requests')
           .select('*', { count: 'exact', head: true })
-          .eq('assigned_driver_id', driver.user_id)
-          .eq('status', 'completed')
+          .eq('driver_id', driver.user_id)
+          .in('status', COMPLETED_STATUSES)
 
         // Get trips this month
         const firstDayOfMonth = new Date()
@@ -143,7 +145,7 @@ export async function GET(request: NextRequest) {
         const { count: tripsThisMonth } = await supabase
           .from('sos_requests')
           .select('*', { count: 'exact', head: true })
-          .eq('assigned_driver_id', driver.user_id)
+          .eq('driver_id', driver.user_id)
           .gte('requested_at', firstDayOfMonth.toISOString())
 
         // Get last month's trips for comparison
@@ -155,7 +157,7 @@ export async function GET(request: NextRequest) {
         const { count: tripsLastMonth } = await supabase
           .from('sos_requests')
           .select('*', { count: 'exact', head: true })
-          .eq('assigned_driver_id', driver.user_id)
+          .eq('driver_id', driver.user_id)
           .gte('requested_at', firstDayOfLastMonth.toISOString())
           .lt('requested_at', firstDayOfMonth.toISOString())
 
@@ -163,8 +165,8 @@ export async function GET(request: NextRequest) {
         const { data: completedSOS } = await supabase
           .from('sos_requests')
           .select('requested_at, assigned_at')
-          .eq('assigned_driver_id', driver.user_id)
-          .eq('status', 'completed')
+          .eq('driver_id', driver.user_id)
+          .in('status', COMPLETED_STATUSES)
           .not('assigned_at', 'is', null)
           .limit(20)
 

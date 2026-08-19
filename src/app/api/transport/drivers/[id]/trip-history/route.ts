@@ -32,10 +32,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const from = sp.get('from')
     const to = sp.get('to')
 
+    // The driver is stored inline on sos_requests.driver_id (assigned_driver_id is
+    // an unused legacy column, so filtering on it returned no trips at all), and
+    // the live table has no destination_hospital_id — selecting it 500s the route.
     let query = supabase
       .from('sos_requests')
-      .select('id, requested_at, completed_at, status, patient_id, destination_hospital_id')
-      .eq('assigned_driver_id', driverId)
+      .select('id, requested_at, completed_at, status, patient_id')
+      .eq('driver_id', driverId)
       .order('requested_at', { ascending: false })
 
     if (from) query = query.gte('requested_at', from)
@@ -48,19 +51,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Failed to load trips', details: error.message }, { status: 500 })
     }
 
-    // Resolve patient names + hospital names in batch (avoids FK-name-fragile joins).
+    // Resolve patient names in batch (avoids FK-name-fragile joins).
     const patientIds = [...new Set((trips ?? []).map((t) => t.patient_id).filter(Boolean))] as string[]
-    const hospitalIds = [...new Set((trips ?? []).map((t) => t.destination_hospital_id).filter(Boolean))] as string[]
 
     const patientNames: Record<string, string> = {}
     if (patientIds.length) {
       const { data: users } = await supabase.from('users').select('id, full_name').in('id', patientIds)
       for (const u of users ?? []) patientNames[u.id] = u.full_name ?? '—'
-    }
-    const hospitalNames: Record<string, string> = {}
-    if (hospitalIds.length) {
-      const { data: hospitals } = await supabase.from('hospitals').select('id, name').in('id', hospitalIds)
-      for (const h of hospitals ?? []) hospitalNames[h.id] = h.name ?? '—'
     }
 
     const rows: TripHistoryRow[] = (trips ?? []).map((t) => {
@@ -75,7 +72,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         id: t.id,
         dateTime: t.requested_at,
         patientName: t.patient_id ? patientNames[t.patient_id] ?? '—' : '—',
-        destinationHospital: t.destination_hospital_id ? hospitalNames[t.destination_hospital_id] ?? '—' : '—',
+        // No actual-destination field on sos_requests yet (deferred with the
+        // 'Nearest Hospital' outcome), so this column stays a placeholder.
+        destinationHospital: '—',
         outcome: tripOutcome(t.status),
         durationMinutes,
       }

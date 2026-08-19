@@ -33,11 +33,14 @@ export async function GET() {
       (drivers ?? []).map(async (d): Promise<DriverDashboardStats> => {
         const driverId = d.user_id as string
 
-        // Total (completed) trips — match both status vocabularies.
+        // Total (completed) trips — match both status vocabularies. The driver is
+        // stored inline on sos_requests.driver_id; there is no assigned_driver_id
+        // column on the live table (filtering on it silently counted nothing, so
+        // every driver showed 0 trips).
         const { count: totalTrips } = await supabase
           .from('sos_requests')
           .select('*', { count: 'exact', head: true })
-          .eq('assigned_driver_id', driverId)
+          .eq('driver_id', driverId)
           .in('status', COMPLETED_STATUSES)
 
         // SOS cancellations (driver actively declined) — last 30 days.

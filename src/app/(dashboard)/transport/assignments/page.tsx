@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,11 +15,12 @@ export default function AssignmentsPage() {
   const [sosRequests, setSOSRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
 
-  useEffect(() => {
-    const loadData = async () => {
+  const loadData = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
       try {
-        setLoading(true)
+        // Realtime refreshes repaint in place — no spinner, no toast.
+        if (!silent) setLoading(true)
         setError(null)
 
         console.log('Loading drivers...')
@@ -93,6 +95,7 @@ export default function AssignmentsPage() {
 
         setDrivers(driversWithAssignments)
         setSOSRequests(sosRequestsData)
+        setLastUpdatedAt(new Date())
 
         console.log('Final drivers with assignments:', driversWithAssignments)
         console.log('Status breakdown:', {
@@ -102,17 +105,45 @@ export default function AssignmentsPage() {
           inactive: driversWithAssignments.filter((d: any) => d.displayStatus === 'Inactive').length
         })
 
-        toast.success(`Loaded ${driversWithAssignments.length} drivers successfully`)
+        if (!silent) toast.success(`Loaded ${driversWithAssignments.length} drivers successfully`)
       } catch (error) {
         console.error('Error loading data:', error)
-        setError(error instanceof Error ? error.message : 'Failed to load data')
-        toast.error('Failed to load data')
+        // A failed background refresh keeps the last good board on screen.
+        if (!silent) {
+          setError(error instanceof Error ? error.message : 'Failed to load data')
+          toast.error('Failed to load data')
+        }
       } finally {
-        setLoading(false)
+        if (!silent) setLoading(false)
       }
-    }
+  }, [])
 
+  useEffect(() => {
     loadData()
+  }, [loadData])
+
+  // Always-current refresher for the realtime handlers (avoids stale closures).
+  const refreshRef = useRef<() => void>(() => {})
+  refreshRef.current = () => loadData({ silent: true })
+
+  // Live updates: driver availability and SOS assignment/status changes repaint
+  // the board without a page refresh. Debounced to coalesce write bursts.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const bump = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => refreshRef.current(), 800)
+    }
+    const channel = supabase
+      .channel('transport-assignments-board')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sos_requests' }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sos_request_assigned' }, bump)
+      .subscribe()
+    return () => {
+      if (timer) clearTimeout(timer)
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   if (loading) {
@@ -156,6 +187,18 @@ export default function AssignmentsPage() {
             <h1 className="text-3xl font-bold text-gray-900">Driver Assignments</h1>
             <p className="text-gray-600">Monitor your drivers and their current assignments</p>
           </div>
+          <span className="flex items-center gap-1.5 text-xs text-gray-500" title="This board updates itself as drivers and SOS cases change — no refresh needed">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            </span>
+            Live
+            {lastUpdatedAt && (
+              <span className="text-gray-400">
+                · {lastUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
+          </span>
         </div>
 
         {/* Stats Cards */}
