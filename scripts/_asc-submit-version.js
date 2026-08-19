@@ -27,7 +27,7 @@ const VERSION = process.env.VERSION || '2.0.2'
 const BUILD_ID = process.env.BUILD_ID || 'cbbf66b1-eeb7-4c96-ab72-5a8b3827f7c0' // build 6
 const SUBMIT = process.env.SUBMIT !== '0'
 
-const WHATS_NEW = `• Emergency contacts can now raise an SOS for the patient they are linked to.
+const WHATS_NEW = process.env.WHATS_NEW || `• Emergency contacts can now raise an SOS for the patient they are linked to.
 • The SOS button no longer stays active abroad while your location is still being worked out.
 • When no ambulance can be assigned, the app now says so plainly and offers a one-tap call to 108, instead of reporting it as a cancellation.`
 
