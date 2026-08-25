@@ -4,7 +4,7 @@ import { updateSession } from '@/lib/supabase/middleware'
 // Public routes — reachable without a Supabase session. Preserved verbatim from
 // the previous Clerk middleware allow-list (each entry keeps its original reason).
 // Matched as prefixes: an entry "/foo" matches "/foo" and "/foo/anything".
-const PUBLIC_PREFIXES = [
+export const PUBLIC_PREFIXES = [
   '/', // exact-only, handled specially below
   '/sign-in',
   '/sign-up',
@@ -56,9 +56,19 @@ const PUBLIC_PREFIXES = [
   // Password reset — the emailed 6-digit code is typed here, so the visitor has
   // no session yet (verifyOtp creates one).
   '/auth/reset',
+  // Hospital first-login (US-001). The admin arrives from the onboarding EMAIL
+  // holding a one-time token and no session — the token IS the credential, so
+  // bouncing them to /sign-in makes the emailed link useless. Only these two
+  // paths are public; every other /hospital/* route is gated, and so is the
+  // rest of /api/hospital.
+  '/hospital/set-password',
+  '/hospital/link-expired',
+  // Trailing slash on purpose: prefix matching would otherwise make any future
+  // '/api/hospital/onboarding-*' route public by accident.
+  '/api/hospital/onboarding/',
 ]
 
-function isPublic(pathname: string): boolean {
+export function isPublic(pathname: string): boolean {
   if (pathname === '/') return true
   // Prefix match mirrors the old Clerk `"/foo(.*)"` route matchers.
   return PUBLIC_PREFIXES.some((p) => p !== '/' && pathname.startsWith(p))

@@ -23,6 +23,7 @@ export default function ProfilePage() {
           admin: '/admin/profile',
           ert: '/erteam/profile',
           transport_company: '/transport/profile',
+          hospital: '/hospital',
           patient: '/mobile-app-required', // Redirect patients to mobile app
           driver: '/mobile-app-required'   // Redirect drivers to mobile app
         }

@@ -173,6 +173,7 @@ export default function AssignRolesPage() {
       admin: 'bg-red-100 text-red-800',
       ert: 'bg-orange-100 text-orange-800',
       transport_company: 'bg-blue-100 text-blue-800',
+      hospital: 'bg-teal-100 text-teal-800',
       patient: 'bg-green-100 text-green-800',
       driver: 'bg-purple-100 text-purple-800'
     }
@@ -181,6 +182,7 @@ export default function AssignRolesPage() {
       admin: 'Administrator',
       ert: 'Emergency Response',
       transport_company: 'Transport Company',
+      hospital: 'Hospital Admin',
       patient: 'Patient',
       driver: 'Driver'
     }

@@ -68,6 +68,9 @@ export function useRoleBasedNavigation() {
         case 'transport_company':
           basePath = '/transport'
           break
+        case 'hospital':
+          basePath = '/hospital'
+          break
       }
       router.push(`${basePath}${pagePath}`)
     }

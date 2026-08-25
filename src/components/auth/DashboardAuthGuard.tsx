@@ -53,6 +53,7 @@ export function DashboardAuthGuard({ children }: DashboardAuthGuardProps) {
           admin: '/admin/dashboard',
           ert: '/erteam/dashboard',
           transport_company: '/transport/dashboard',
+          hospital: '/hospital',
           patient: '/mobile-app-required', // Redirect patients to mobile app
           driver: '/mobile-app-required'   // Redirect drivers to mobile app
         }
@@ -203,6 +204,7 @@ export function DashboardAuthGuard({ children }: DashboardAuthGuardProps) {
                     admin: '/admin/dashboard',
                     ert: '/erteam/dashboard',
                     transport_company: '/transport/dashboard',
+                    hospital: '/hospital',
                     patient: '/mobile-app-required',
                     driver: '/mobile-app-required'
                   }

@@ -2,6 +2,9 @@ import { createServerClient } from '@/lib/supabase/server'
 import { UserService } from '@/services/userService'
 import { UserRole } from '@/types'
 
+/** Roles the generic invite flow can grant. See the note on sendInvitation(). */
+export type InvitableRole = Exclude<UserRole, 'hospital'>
+
 export interface InvitationResult {
   success: boolean
   invitationId?: string
@@ -17,11 +20,16 @@ export interface InvitationResult {
  *
  * @param email     - invitee email
  * @param role      - role to grant
+ *
+ * 'hospital' is excluded by type: a Hospital Admin is only meaningful alongside
+ * a hospital_admins row tying them to one hospital, and this generic invite
+ * cannot create that link. requireHospital() would reject the resulting account
+ * as "not linked to a hospital". Use provisionHospitalAdmin() instead.
  * @param invitedBy - id of the admin who invited (stored in metadata)
  */
 export async function sendUserInvitation(
   email: string,
-  role: UserRole,
+  role: InvitableRole,
   invitedBy?: string,
 ): Promise<InvitationResult> {
   try {
@@ -30,7 +38,7 @@ export async function sendUserInvitation(
       return { success: false, email, error: 'Invalid email format' }
     }
 
-    const validRoles: UserRole[] = ['admin', 'ert', 'transport_company', 'patient', 'driver']
+    const validRoles: InvitableRole[] = ['admin', 'ert', 'transport_company', 'patient', 'driver']
     if (!validRoles.includes(role)) {
       return { success: false, email, error: `Invalid role. Must be one of: ${validRoles.join(', ')}` }
     }
@@ -76,7 +84,7 @@ export async function sendUserInvitation(
  * Send bulk invitations (e.g. CSV import).
  */
 export async function sendBulkInvitations(
-  users: Array<{ email: string; role: UserRole }>,
+  users: Array<{ email: string; role: InvitableRole }>,
   invitedBy?: string,
 ): Promise<InvitationResult[]> {
   const results: InvitationResult[] = []

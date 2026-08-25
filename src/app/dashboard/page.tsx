@@ -53,6 +53,7 @@ export default function DashboardPage() {
       admin: 'Admin Dashboard',
       ert: 'Emergency Response Dashboard',
       transport_company: 'Transport Dashboard',
+      hospital: 'Hospital Dashboard',
       patient: 'Patient Dashboard',
       driver: 'Driver Dashboard'
     }

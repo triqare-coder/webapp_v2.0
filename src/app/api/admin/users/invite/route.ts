@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { createClient } from '@/lib/supabase/server'
-import { sendUserInvitation } from '@/lib/invitations'
+import { type InvitableRole, sendUserInvitation } from '@/lib/invitations'
 import { UserRole } from '@/types'
 
 // POST /api/admin/users/invite - Send invitation to a new user (admin only)
@@ -38,9 +38,18 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    // A Hospital Admin cannot be invited this way: the account is only usable
+    // alongside a hospital_admins row linking it to one hospital, which this
+    // flow cannot create. Onboarding happens from the hospital record instead.
+    if (role === 'hospital') {
+      return NextResponse.json({
+        error: 'Hospital admins are onboarded from the hospital record, not invited. Open the hospital and use "Send Onboarding Email".'
+      }, { status: 400 })
+    }
+
     // Send the invitation via Supabase Auth. The helper creates the (unconfirmed)
     // auth user, emails the invite link, and applies the intended role.
-    const result = await sendUserInvitation(email, role as UserRole, gate.appUser.id)
+    const result = await sendUserInvitation(email, role as InvitableRole, gate.appUser.id)
 
     if (!result.success) {
       const message = result.error || 'Unknown error'

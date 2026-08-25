@@ -9,11 +9,15 @@ import { getAuthedUser } from '@/lib/supabase/server'
  * `requireAuth`  — any authenticated user with a public.users row.
  * `requireRole`  — authenticated AND role ∈ roles.
  * STAFF_ROLES     — the web-dashboard roles (admin / ert / transport_company).
+ *                   'hospital' is deliberately NOT in this set: those routes are
+ *                   cross-tenant staff reads, and a hospital admin is a tenant.
+ *                   Hospital routes gate on requireHospital() instead, which
+ *                   resolves the one hospital they may see.
  *                   Patients and drivers use the mobile app, not these routes, so
  *                   staff-only reads keep patient PII off unauthenticated / wrong-role
  *                   callers even though every user now has an auth identity.
  */
-export type AppRole = 'admin' | 'ert' | 'transport_company' | 'patient' | 'driver'
+export type AppRole = 'admin' | 'ert' | 'transport_company' | 'patient' | 'driver' | 'hospital'
 
 export const STAFF_ROLES: AppRole[] = ['admin', 'ert', 'transport_company']
 

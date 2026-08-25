@@ -45,6 +45,11 @@ export interface NavItem {
 
 // Role-based navigation configuration
 export const navigationConfig: Record<UserRole, NavItem[]> = {
+  // Hospital Admins are served by app/(hospital), which renders the spec's own
+  // top nav (Home | Patients | Admission History) instead of the staff sidebar.
+  // They intentionally have no entries here; hasAccessToPath() short-circuits
+  // for them rather than falling through to this config.
+  hospital: [],
   admin: [
     {
       title: 'Admin Dashboard',
@@ -463,6 +468,7 @@ export const getProfileNavItem = (role: UserRole): NavItem => {
     admin: '/admin/profile',
     ert: '/erteam/profile',
     transport_company: '/transport/profile',
+    hospital: '/hospital',
     patient: '/patient/profile',
     driver: '/driver/profile'
   }
@@ -471,6 +477,7 @@ export const getProfileNavItem = (role: UserRole): NavItem => {
     admin: 'Admin Profile',
     ert: 'ERT Profile',
     transport_company: 'Company Profile',
+    hospital: 'Hospital Dashboard',
     patient: 'Patient Profile',
     driver: 'Driver Profile'
   }
@@ -504,6 +511,8 @@ export function getDefaultDashboardPath(role: UserRole | null): string {
       return '/erteam/dashboard'
     case 'transport_company':
       return '/transport/dashboard'
+    case 'hospital':
+      return '/hospital'
     case 'patient':
       return '/mobile-app-required' // Redirect patients to mobile app
     case 'driver':
@@ -530,6 +539,13 @@ export function hasAccessToPath(userRole: UserRole | null, path: string): boolea
   // Transport company users have access to all transport paths
   if (userRole === 'transport_company' && path.startsWith('/transport/')) {
     return true
+  }
+
+  // Hospital admins live entirely under /hospital, which has its own top nav
+  // rather than the staff sidebar, so there is nothing in navigationConfig for
+  // the fall-through below to match.
+  if (userRole === 'hospital') {
+    return path === '/hospital' || path.startsWith('/hospital/')
   }
 
   // Patient users should use mobile app - only allow mobile-app-required page
