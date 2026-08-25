@@ -39,7 +39,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
-const VALID_ROLES: UserRole[] = ['admin', 'ert', 'transport_company', 'patient', 'driver']
+// Must list every UserRole: a role missing here resolves to null, which reads
+// downstream as "no role assigned" and locks the account out of its dashboard.
+const VALID_ROLES: UserRole[] = ['admin', 'ert', 'transport_company', 'patient', 'driver', 'hospital']
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
