@@ -20,6 +20,7 @@ import {
   Clock,
   Edit,
   Trash2,
+  Mail,
   AlertTriangle,
   FileText
 } from 'lucide-react'
@@ -42,6 +43,7 @@ export default function EditHospitalPage() {
   const { updateHospital, deleteHospital } = useHospitals()
 
   const [isEditing, setIsEditing] = useState(false)
+  const [sendingOnboarding, setSendingOnboarding] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -64,7 +66,11 @@ export default function EditHospitalPage() {
     general_operating_hours: '',
     emergency_department_hours: '',
     additional_notes: '',
-    status: 'active'
+    status: 'active',
+    // QSoS Hospital Dashboard programme (US-001).
+    admin_email: '',
+    qsos_eligibility: '',
+    specialisations: ''
   })
 
   // Location data hooks
@@ -95,7 +101,10 @@ export default function EditHospitalPage() {
         general_operating_hours: hospital.general_operating_hours || '',
         emergency_department_hours: hospital.emergency_department_hours || '',
         additional_notes: hospital.additional_notes || '',
-        status: hospital.status || 'active'
+        status: hospital.status || 'active',
+        admin_email: hospital.admin_email || '',
+        qsos_eligibility: hospital.qsos_eligibility || '',
+        specialisations: (hospital.specialisations || []).join(', ')
       })
     }
   }, [hospital])
@@ -132,7 +141,14 @@ export default function EditHospitalPage() {
         hospital_type: formData.hospital_type as 'government' | 'private' | 'specialty' | 'other' | undefined,
         status: formData.status as 'active' | 'inactive' | 'under_review' | 'suspended',
         latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
-        longitude: formData.longitude ? parseFloat(formData.longitude) : undefined
+        longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
+        admin_email: formData.admin_email.trim() || undefined,
+        qsos_eligibility: (formData.qsos_eligibility || undefined) as
+          'PRIMARY' | 'SECONDARY' | 'BOTH' | undefined,
+        specialisations: formData.specialisations
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean),
       }
 
       const result = await updateHospital(hospitalId, updateData)
@@ -262,6 +278,24 @@ export default function EditHospitalPage() {
     )
   }
 
+  // Reports the outcome honestly: provisioning the admin and actually sending
+  // the mail are separate results, and the send is skipped entirely when
+  // RESEND_API_KEY is unset.
+  const resendOnboardingEmail = async () => {
+    setSendingOnboarding(true)
+    try {
+      const res = await fetch(`/api/admin/hospitals/${hospitalId}/onboarding-email`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) toast.error(data.error || 'Could not send the onboarding email')
+      else if (!data.emailSent) toast.warning(data.message)
+      else toast.success(data.message)
+    } catch {
+      toast.error('Could not send the onboarding email')
+    } finally {
+      setSendingOnboarding(false)
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
         {/* Header */}
@@ -307,6 +341,24 @@ export default function EditHospitalPage() {
                 Cancel
               </Button>
             )}
+
+            {/* US-001 AC4. Issues a fresh 72-hour token, invalidates the previous
+                one, and resets the temporary password so the emailed credential
+                works. Also OQ-004's manual trigger: available whether or not
+                auto-fire-on-save is enabled. */}
+            <Button
+              variant="outline"
+              onClick={resendOnboardingEmail}
+              disabled={sendingOnboarding || !hospital.admin_email}
+              title={
+                hospital.admin_email
+                  ? `Send a fresh setup link to ${hospital.admin_email}`
+                  : 'Add an admin email address first'
+              }
+            >
+              <Mail className="h-4 w-4 mr-2" />
+              {sendingOnboarding ? 'Sending…' : 'Re-send Onboarding Email'}
+            </Button>
           </div>
           <Button 
             variant="destructive" 
@@ -319,6 +371,63 @@ export default function EditHospitalPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* QSoS Hospital Dashboard — US-001 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                QSOS Hospital Dashboard
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="admin_email">Admin Email Address</Label>
+                  <Input
+                    id="admin_email"
+                    type="email"
+                    value={formData.admin_email}
+                    onChange={(e) => handleInputChange('admin_email', e.target.value)}
+                    disabled={!isEditing}
+                    placeholder="admin@hospital.com"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Changing this does not move the existing admin account. Use
+                    &quot;Re-send Onboarding Email&quot; above to issue a new setup link.
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="qsos_eligibility">Hospital Type (QSOS)</Label>
+                  <Select
+                    value={formData.qsos_eligibility}
+                    onValueChange={(value) => handleInputChange('qsos_eligibility', value)}
+                    disabled={!isEditing}
+                  >
+                    <SelectTrigger id="qsos_eligibility">
+                      <SelectValue placeholder="Select eligibility" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PRIMARY">Primary eligible</SelectItem>
+                      <SelectItem value="SECONDARY">Secondary eligible</SelectItem>
+                      <SelectItem value="BOTH">Both</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="specialisations">Specialisations</Label>
+                <Input
+                  id="specialisations"
+                  value={formData.specialisations}
+                  onChange={(e) => handleInputChange('specialisations', e.target.value)}
+                  disabled={!isEditing}
+                  placeholder="Cardiology, Neurology"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Separate with commas.</p>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Basic Information */}
           <Card>
             <CardHeader>
