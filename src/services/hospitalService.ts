@@ -23,6 +23,13 @@ export interface DatabaseHospital {
   emergency_department_hours?: string
   additional_notes?: string
   status: 'active' | 'inactive' | 'under_review' | 'suspended'
+  // QSoS-programme fields (hospital dashboard). qsos_eligibility is a separate
+  // axis from hospital_type: it says which slot a patient may pick this hospital
+  // for, not whether it is government or private.
+  admin_email?: string | null
+  specialisations?: string[] | null
+  qsos_eligibility?: 'PRIMARY' | 'SECONDARY' | 'BOTH' | null
+  qsos_enabled?: boolean
   created_at: string
   updated_at: string
 }
@@ -48,6 +55,10 @@ export interface CreateHospitalInput {
   emergency_department_hours?: string
   additional_notes?: string
   status?: 'active' | 'inactive' | 'under_review' | 'suspended'
+  admin_email?: string
+  specialisations?: string[]
+  qsos_eligibility?: 'PRIMARY' | 'SECONDARY' | 'BOTH'
+  qsos_enabled?: boolean
 }
 
 // Hospital update input type
@@ -71,6 +82,10 @@ export interface UpdateHospitalInput {
   emergency_department_hours?: string
   additional_notes?: string
   status?: 'active' | 'inactive' | 'under_review' | 'suspended'
+  admin_email?: string
+  specialisations?: string[]
+  qsos_eligibility?: 'PRIMARY' | 'SECONDARY' | 'BOTH'
+  qsos_enabled?: boolean
 }
 
 export class HospitalService {

@@ -14,7 +14,8 @@ import {
   ArrowLeft,
   MapPin,
   Phone,
-  Clock
+  Clock,
+  ShieldCheck
 } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
@@ -47,7 +48,12 @@ export default function AddHospitalPage() {
     general_operating_hours: '',
     emergency_department_hours: '',
     additional_notes: '',
-    status: 'active'
+    status: 'active',
+    // QSoS Hospital Dashboard programme (US-001). Optional: a hospital can sit
+    // in the directory without being onboarded onto the dashboard.
+    admin_email: '',
+    qsos_eligibility: '',
+    specialisations: ''
   })
 
   // Location data hooks
@@ -88,12 +94,33 @@ export default function AddHospitalPage() {
         hospital_type: formData.hospital_type as 'government' | 'private' | 'specialty' | 'other',
         status: formData.status as 'active' | 'inactive' | 'under_review' | 'suspended',
         latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
-        longitude: formData.longitude ? parseFloat(formData.longitude) : undefined
+        longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
+        admin_email: formData.admin_email.trim() || undefined,
+        qsos_eligibility: (formData.qsos_eligibility || undefined) as
+          'PRIMARY' | 'SECONDARY' | 'BOTH' | undefined,
+        qsos_enabled: Boolean(formData.admin_email.trim()),
+        specialisations: formData.specialisations
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
       }
       const result = await createHospital(hospitalData)
 
       if (result.success) {
-        toast.success('Hospital created successfully!')
+        // Say what actually happened. Creating the hospital and emailing its
+        // admin are separate outcomes, and a missing RESEND_API_KEY silently
+        // skips the send -- reporting "email sent" there would be a lie the
+        // hospital only discovers by never receiving it.
+        const onboarding = result.onboarding
+        if (onboarding?.attempted && !onboarding.ok) {
+          toast.warning(`Hospital created, but onboarding failed: ${onboarding.error}`)
+        } else if (onboarding?.attempted && !onboarding.emailSent) {
+          toast.warning('Hospital created and admin account provisioned, but the onboarding email could not be sent. Use "Re-send Onboarding Email" once email is configured.')
+        } else if (onboarding?.attempted) {
+          toast.success(`Hospital created. Onboarding email sent to ${formData.admin_email.trim()}.`)
+        } else {
+          toast.success('Hospital created successfully!')
+        }
         router.push('/admin/hospitals')
       } else {
         toast.error(result.error || 'Failed to create hospital')
@@ -414,6 +441,61 @@ export default function AddHospitalPage() {
                     rows={3}
                   />
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* QSoS Hospital Dashboard — US-001 onboarding */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5" />
+                QSOS Hospital Dashboard
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Fill this in to onboard the hospital onto the QSOS Hospital Dashboard. Saving
+                creates a Hospital Admin account and emails them a one-time setup link valid for
+                72 hours. Leave the admin email blank to list the hospital in the directory only.
+              </p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <Label htmlFor="admin_email">Admin Email Address</Label>
+                  <Input
+                    id="admin_email"
+                    type="email"
+                    value={formData.admin_email}
+                    onChange={(e) => handleInputChange('admin_email', e.target.value)}
+                    placeholder="admin@hospital.com"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="qsos_eligibility">Hospital Type (QSOS)</Label>
+                  <Select
+                    value={formData.qsos_eligibility}
+                    onValueChange={(value) => handleInputChange('qsos_eligibility', value)}
+                  >
+                    <SelectTrigger id="qsos_eligibility">
+                      <SelectValue placeholder="Select eligibility" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PRIMARY">Primary eligible</SelectItem>
+                      <SelectItem value="SECONDARY">Secondary eligible</SelectItem>
+                      <SelectItem value="BOTH">Both</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="specialisations">Specialisations</Label>
+                <Input
+                  id="specialisations"
+                  value={formData.specialisations}
+                  onChange={(e) => handleInputChange('specialisations', e.target.value)}
+                  placeholder="Cardiology, Neurology"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Optional. Separate with commas.</p>
               </div>
             </CardContent>
           </Card>

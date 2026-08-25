@@ -18,10 +18,17 @@ export async function createSupabaseAuthUser(
   fullName: string,
   role: string,
   _phone?: string,
+  /**
+   * Supply the temporary password instead of having one generated. Needed when
+   * the caller has to TELL the user their password — the hospital onboarding
+   * email quotes it — since a generated one is never returned to the caller.
+   * Omit it for the usual "reset via Forgot Password" provisioning flows.
+   */
+  suppliedTemporaryPassword?: string,
 ): Promise<{ success: boolean; authUserId?: string; appUserId?: string; error?: string }> {
   try {
     const admin = createServerClient()
-    const temporaryPassword = generateTemporaryPassword()
+    const temporaryPassword = suppliedTemporaryPassword || generateTemporaryPassword()
 
     const { data, error } = await admin.auth.admin.createUser({
       email,

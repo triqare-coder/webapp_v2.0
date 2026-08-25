@@ -1,4 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
+
+/** Outcome of the US-001 onboarding attempt that POST /api/hospitals reports back. */
+export interface HospitalOnboardingResult {
+  attempted: boolean
+  ok?: boolean
+  emailSent?: boolean
+  emailReason?: 'not_configured' | 'send_failed'
+  error?: string
+}
 import { DatabaseHospital, CreateHospitalInput, UpdateHospitalInput } from '@/services/hospitalService'
 
 interface UseHospitalsOptions {
@@ -17,7 +26,12 @@ interface UseHospitalsReturn {
   error: string | null
   count: number
   refetch: () => Promise<void>
-  createHospital: (data: CreateHospitalInput) => Promise<{ success: boolean; error?: string; hospital?: DatabaseHospital }>
+  createHospital: (data: CreateHospitalInput) => Promise<{
+    success: boolean
+    error?: string
+    hospital?: DatabaseHospital
+    onboarding?: HospitalOnboardingResult
+  }>
   updateHospital: (id: string, data: UpdateHospitalInput) => Promise<{ success: boolean; error?: string; hospital?: DatabaseHospital }>
   deleteHospital: (id: string) => Promise<{ success: boolean; error?: string }>
 }
@@ -82,7 +96,10 @@ export function useHospitals(options: UseHospitalsOptions = {}): UseHospitalsRet
       // Refresh the hospitals list
       await fetchHospitals()
       
-      return { success: true, hospital: result.hospital }
+      // `onboarding` reports whether the Hospital Admin account was provisioned
+      // and whether the email actually went out, so the UI can say what really
+      // happened instead of assuming a send.
+      return { success: true, hospital: result.hospital, onboarding: result.onboarding }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'An error occurred' }
     }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { HospitalService } from '@/services/hospitalService'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { requireRole, STAFF_ROLES } from '@/lib/auth/requireRole'
+import { onboardingAutofireEnabled, provisionHospitalAdmin } from '@/lib/hospital/provisionHospitalAdmin'
 
 // GET /api/hospitals - Get all hospitals with optional filtering
 export async function GET(request: NextRequest) {
@@ -71,6 +72,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // QSoS-programme fields (US-001). Optional: a hospital can exist in the
+    // directory without being onboarded onto the dashboard.
+    if (body.qsos_eligibility && !['PRIMARY', 'SECONDARY', 'BOTH'].includes(body.qsos_eligibility)) {
+      return NextResponse.json(
+        { error: 'Invalid qsos_eligibility. Must be one of: PRIMARY, SECONDARY, BOTH' },
+        { status: 400 }
+      )
+    }
+    if (body.admin_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(body.admin_email))) {
+      return NextResponse.json({ error: 'Invalid admin email address' }, { status: 400 })
+    }
+
     // Validate status if provided
     if (body.status) {
       const validStatuses = ['active', 'inactive', 'under_review', 'suspended']
@@ -91,8 +104,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // US-001: onboarding fires on save by default (OQ-004), but the manual
+    // "Send Onboarding Email" action stays available either way. A failure here
+    // must not undo the hospital -- it is a real directory row regardless, and
+    // the admin can re-send from the hospital record.
+    let onboarding: {
+      attempted: boolean
+      ok?: boolean
+      emailSent?: boolean
+      emailReason?: string
+      error?: string
+    } = { attempted: false }
+
+    if (body.admin_email && result.data?.id) {
+      if (await onboardingAutofireEnabled()) {
+        const provisioned = await provisionHospitalAdmin({
+          hospitalId: result.data.id,
+          hospitalName: result.data.name,
+          adminEmail: String(body.admin_email),
+        })
+        onboarding = {
+          attempted: true,
+          ok: provisioned.ok,
+          emailSent: provisioned.emailSent,
+          emailReason: provisioned.emailReason,
+          error: provisioned.error,
+        }
+      }
+    }
+
     return NextResponse.json(
-      { hospital: result.data },
+      { hospital: result.data, onboarding },
       { status: 201 }
     )
   } catch (error) {
