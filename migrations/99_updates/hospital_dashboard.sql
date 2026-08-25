@@ -6,6 +6,14 @@
 -- this project exposes no exec_sql/exec RPC (verified live), so there is
 -- no self-applying path.
 --
+-- EVERY section is wrapped in its own explicit BEGIN/COMMIT. That is not
+-- decoration: the SQL editor runs whatever follows the last COMMIT as one
+-- implicit transaction, so a statement failing near the end silently rolls back
+-- every unwrapped statement before it. On the first attempt the backfill's
+-- 42703 took the realtime publication and the config seed down with it while
+-- the committed sections survived, leaving a half-applied schema. Keep the
+-- boundaries explicit when editing.
+--
 -- Written against the LIVE schema as measured by
 -- scripts/_hospital-preflight.js on 2026-08-25, NOT against
 -- migrations/01_schema/02_tables.sql, which is drifted. Measured facts
@@ -674,6 +682,8 @@ COMMIT;
 -- for new tables. Declared explicitly here.
 -- =====================================================================
 
+BEGIN;
+
 DO $$
 DECLARE t text;
 BEGIN
@@ -710,6 +720,10 @@ INSERT INTO public.configurations (key, value) VALUES
   ('hospital_eta_refresh_seconds',        '60')
 ON CONFLICT (key) DO NOTHING;
 
+COMMIT;
+
+BEGIN;
+
 -- =====================================================================
 -- 9. Backfill
 --
@@ -721,7 +735,11 @@ ON CONFLICT (key) DO NOTHING;
 INSERT INTO public.hospital_patient_registrations
   (hospital_id, patient_id, registration_type, registered_since,
    patient_name, patient_phone, blood_group, known_conditions)
-SELECT h.hospital_id, h.user_id, h.registration_type, COALESCE(p.created_at, NOW()),
+-- users.created_at, not patients.created_at: the patients table carries only
+-- updated_at on this database. The account-creation date is the closest honest
+-- answer for "registered since" on a backfilled row; NOW() would claim every
+-- existing patient registered on migration day.
+SELECT h.hospital_id, h.user_id, h.registration_type, COALESCE(u.created_at, NOW()),
        COALESCE(NULLIF(TRIM(u.full_name), ''),
                 NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
                 u.email),
@@ -738,6 +756,8 @@ JOIN public.users    u ON u.id      = h.user_id
 ON CONFLICT (hospital_id, patient_id, registration_type)
   WHERE archived_at IS NULL AND patient_id IS NOT NULL
 DO NOTHING;
+
+COMMIT;
 
 -- =====================================================================
 -- 10. Verify

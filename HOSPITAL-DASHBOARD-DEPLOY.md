@@ -32,6 +32,10 @@ and run it. It is idempotent and ends with a verification SELECT that should pri
 | backfilled registrations | ~72 |
 | config keys | 4 |
 
+If a run reports fewer than 6 tables or 0 config keys, it partially applied — see
+"Re-running after a partial apply" below. Re-running the whole file is the fix;
+it is idempotent.
+
 The backfill matters: 204 hospitals and ~72 live patient preferences already
 exist, and without it every dashboard opens empty and only fills for patients who
 happen to edit their preferences after go-live.
@@ -40,6 +44,20 @@ To rehearse it first, `migrations/tests/hospital_dashboard/run.sh` applies it
 twice to a throwaway Postgres whose fixture reproduces the live column set, then
 runs 43 assertions covering every user story, cross-hospital isolation, and
 idempotency. Requires Docker.
+
+### Re-running after a partial apply
+
+Every section carries its own `BEGIN`/`COMMIT`. The Supabase SQL editor runs
+whatever follows the last `COMMIT` as one implicit transaction, so an error near
+the end silently rolls back the unwrapped statements before it while the
+committed sections survive. That happened on the first attempt: the backfill
+failed with `42703` and took the realtime publication and the config seed with
+it, leaving the tables in place but the dashboard non-functional.
+
+The file is idempotent, so the fix is always to correct the error and re-run the
+whole thing. `node scripts/_hospital-preflight.js` plus the verification SELECT
+tell you what actually landed. Keep the explicit transaction boundaries if you
+edit it.
 
 ## 3. Environment variables (Netlify UI)
 

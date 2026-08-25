@@ -6,6 +6,25 @@ BEGIN
   ELSE RAISE EXCEPTION 'FAIL  % => got [%] want [%]', label, got, want; END IF;
 END $$;
 
+-- Section 9 backfill: patients who chose a hospital before the migration ran.
+-- 3 rows = A-primary + B-secondary for Pre One, B-primary for Pre Two.
+SELECT ck('backfill picked up pre-existing preferences',
+  (SELECT COUNT(*)::text FROM hospital_patient_registrations
+   WHERE patient_id IN ('e0000000-0000-0000-0000-000000000001','e0000000-0000-0000-0000-000000000002')), '3');
+SELECT ck('backfill snapshots the name',
+  (SELECT patient_name FROM hospital_patient_registrations
+   WHERE patient_id='e0000000-0000-0000-0000-000000000001' AND registration_type='PRIMARY'), 'Pre One');
+SELECT ck('backfill snapshots the blood group',
+  (SELECT blood_group FROM hospital_patient_registrations
+   WHERE patient_id='e0000000-0000-0000-0000-000000000002'), 'B-');
+-- registered_since must date from the account, not from migration day.
+SELECT ck('backfill dates registration from the account, not today',
+  (SELECT registered_since::date::text FROM hospital_patient_registrations
+   WHERE patient_id='e0000000-0000-0000-0000-000000000001' AND registration_type='PRIMARY'), '2026-01-15');
+SELECT ck('backfill is idempotent across the re-run',
+  (SELECT COUNT(*)::text FROM hospital_patient_registrations
+   WHERE patient_id='e0000000-0000-0000-0000-000000000001' AND registration_type='PRIMARY'), '1');
+
 -- Two QSoS hospitals + one patient who picks both.
 INSERT INTO hospitals (id, name) VALUES
   ('11111111-1111-1111-1111-111111111111','Pushpagiri Medical Centre'),
@@ -19,11 +38,14 @@ VALUES ('aaaaaaaa-0000-0000-0000-000000000001','O+','Penicillin','Diabetes Type 
 
 -- US-002/003: registration fans out to both, ACTIVE, with snapshots.
 SELECT ck('US-003 registrations created',
-  (SELECT COUNT(*)::text FROM hospital_patient_registrations WHERE status='ACTIVE' AND archived_at IS NULL), '2');
+  (SELECT COUNT(*)::text FROM hospital_patient_registrations
+   WHERE patient_id='aaaaaaaa-0000-0000-0000-000000000001' AND status='ACTIVE' AND archived_at IS NULL), '2');
 SELECT ck('US-003 snapshot name',
-  (SELECT patient_name FROM hospital_patient_registrations WHERE registration_type='PRIMARY'), 'Anil Kumar');
+  (SELECT patient_name FROM hospital_patient_registrations
+   WHERE patient_id='aaaaaaaa-0000-0000-0000-000000000001' AND registration_type='PRIMARY'), 'Anil Kumar');
 SELECT ck('US-002 registration notifications',
-  (SELECT COUNT(*)::text FROM hospital_notifications WHERE type='REGISTRATION'), '2');
+  (SELECT COUNT(*)::text FROM hospital_notifications
+   WHERE type='REGISTRATION' AND patient_id='aaaaaaaa-0000-0000-0000-000000000001'), '2');
 
 -- US-006: SOS pages BOTH hospitals, both PENDING.
 INSERT INTO sos_requests (id, patient_id, patient_name)
@@ -98,14 +120,16 @@ SELECT ck('US-004 new hospital registered',
 -- users -> patients -> sos_requests cascade.
 DELETE FROM users WHERE id='aaaaaaaa-0000-0000-0000-000000000001';
 SELECT ck('US-005 registration INACTIVE',
-  (SELECT COUNT(*)::text FROM hospital_patient_registrations WHERE status='INACTIVE'), '2');
+  (SELECT COUNT(*)::text FROM hospital_patient_registrations
+   WHERE status='INACTIVE' AND patient_name='Anil Kumar'), '2');
 SELECT ck('US-005 exact deletion message',
   (SELECT message FROM hospital_notifications WHERE type='ACCOUNT_DELETED' LIMIT 1),
   'Anil Kumar''s QSoS account has been deleted. Their profile is now inactive.');
 SELECT ck('US-005 sos_requests really cascaded away',
-  (SELECT COUNT(*)::text FROM sos_requests), '0');
+  (SELECT COUNT(*)::text FROM sos_requests
+   WHERE patient_id='aaaaaaaa-0000-0000-0000-000000000001'), '0');
 SELECT ck('US-009 admission history SURVIVED the cascade',
-  (SELECT COUNT(*)::text FROM hospital_sos_alerts), '4');
+  (SELECT COUNT(*)::text FROM hospital_sos_alerts WHERE patient_name='Anil Kumar'), '4');
 SELECT ck('US-009 name retained after deletion',
   (SELECT DISTINCT patient_name FROM hospital_sos_alerts WHERE outcome='ADMITTED'), 'Anil Kumar');
 SELECT ck('US-009 blood group retained',

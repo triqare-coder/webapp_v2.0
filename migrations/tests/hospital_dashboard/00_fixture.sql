@@ -43,7 +43,10 @@ CREATE TABLE public.patients (
   primary_hospital_id UUID REFERENCES public.hospitals(id),
   secondary_hospital_id UUID REFERENCES public.hospitals(id),
   latitude NUMERIC, longitude NUMERIC, address_line TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+  -- NO created_at. Measured live: patients carries only updated_at. The first
+  -- draft of this fixture invented one, so a backfill referencing p.created_at
+  -- passed here and failed on the real database with 42703.
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Column set as measured live: NO created_at, NO destination_hospital_id,
@@ -68,3 +71,21 @@ CREATE TABLE public.configurations (
 );
 
 CREATE PUBLICATION supabase_realtime;
+
+-- Patients who already chose a hospital BEFORE the migration runs.
+--
+-- Section 9 of the migration backfills these. Without them the backfill runs
+-- against an empty table and every column it names goes unexercised -- which is
+-- exactly how a reference to the non-existent patients.created_at reached the
+-- real database and failed there with 42703.
+INSERT INTO public.hospitals (id, name) VALUES
+  ('f0000000-0000-0000-0000-000000000001','Pre-existing Hospital A'),
+  ('f0000000-0000-0000-0000-000000000002','Pre-existing Hospital B');
+
+INSERT INTO public.users (id, email, full_name, phone, role, created_at) VALUES
+  ('e0000000-0000-0000-0000-000000000001','pre1@test.com','Pre One','+919000000001','patient','2026-01-15T00:00:00Z'),
+  ('e0000000-0000-0000-0000-000000000002','pre2@test.com','Pre Two','+919000000002','patient','2026-02-20T00:00:00Z');
+
+INSERT INTO public.patients (user_id, blood_group, primary_hospital_id, secondary_hospital_id) VALUES
+  ('e0000000-0000-0000-0000-000000000001','A+','f0000000-0000-0000-0000-000000000001','f0000000-0000-0000-0000-000000000002'),
+  ('e0000000-0000-0000-0000-000000000002','B-','f0000000-0000-0000-0000-000000000002', NULL);

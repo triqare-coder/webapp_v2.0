@@ -33,10 +33,20 @@ echo "migration applied"
 docker exec $C psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/hospital_dashboard.sql >/dev/null 2>&1
 echo "migration re-applied (idempotent)"
 
+# Assertions raise, so psql's exit status matters -- but so does the output,
+# because a raised EXCEPTION inside a DO block still prints ERROR. Both are
+# checked: an earlier version piped straight to grep and reported success while
+# an assertion was failing in plain sight.
+failed=0
 for f in 01_lifecycle 02_isolation 03_scenarios; do
-  docker exec $C psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/$f.sql 2>&1 \
-    | grep -E "PASS|FAIL|ERROR" | sed 's/^psql:[^ ]* NOTICE:  //' || true
+  out=$(docker exec $C psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/$f.sql 2>&1) || failed=1
+  echo "$out" | grep -E "PASS|FAIL|ERROR" | sed 's/^psql:[^ ]* NOTICE:  //' || true
+  if echo "$out" | grep -qE "FAIL|ERROR"; then failed=1; fi
 done
 
 docker rm -f $C >/dev/null
+if [ "$failed" -ne 0 ]; then
+  echo "--- hospital_dashboard.sql: ASSERTIONS FAILED ---" >&2
+  exit 1
+fi
 echo "--- hospital_dashboard.sql: all assertions passed ---"
