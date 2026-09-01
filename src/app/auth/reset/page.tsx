@@ -17,9 +17,13 @@ type Step = 'email' | 'code' | 'password'
 
 const RESEND_COOLDOWN_SECONDS = 30
 
-// Mirrors the project's Auth → Email OTP Length setting (verified: recovery codes
-// arrive as 8 digits). Change here if that setting changes.
-const OTP_LENGTH = 8
+// The emailed code is whatever Supabase Auth is configured to send. This form
+// used to pin it to exactly 8 digits three ways at once — inputMode="numeric", a
+// maxLength of 8, and an onChange that stripped every non-digit as the user typed
+// — so a token containing a letter could not be entered at all. Accept anything
+// alphanumeric in a generous range and let verifyOtp judge it.
+const OTP_MIN_LENGTH = 6
+const OTP_MAX_LENGTH = 12
 
 // Supabase's raw messages are accurate but read like API errors.
 function friendlyError(message: string): string {
@@ -89,7 +93,7 @@ function ResetPasswordForm() {
     }
     setStep('code')
     setCooldown(RESEND_COOLDOWN_SECONDS)
-    setNotice(`We sent a code (${OTP_LENGTH} digits) to ${address}.`)
+    setNotice(`We sent a code to ${address}.`)
   }
 
   function validatePassword(): string | null {
@@ -114,8 +118,8 @@ function ResetPasswordForm() {
       setError(invalid)
       return
     }
-    if (code.trim().length < OTP_LENGTH) {
-      setError(`Enter the ${OTP_LENGTH}-digit code from the email.`)
+    if (code.trim().length < OTP_MIN_LENGTH) {
+      setError('Enter the code from the email.')
       return
     }
     setLoading(true)
@@ -216,7 +220,7 @@ function ResetPasswordForm() {
           ) : step === 'email' ? (
             <form onSubmit={sendCode} className="space-y-4">
               <p className="text-sm text-gray-600">
-                Enter your email and we&apos;ll send you a code ({OTP_LENGTH} digits).
+                Enter your email and we&apos;ll send you a code.
               </p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -247,14 +251,17 @@ function ResetPasswordForm() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Reset code</label>
                 <input
                   type="text"
-                  inputMode="numeric"
                   autoComplete="one-time-code"
-                  maxLength={OTP_LENGTH}
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  maxLength={OTP_MAX_LENGTH}
                   required
                   value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                  className={`${inputCls} text-center text-lg tracking-[0.4em] font-semibold`}
-                  placeholder={'0'.repeat(OTP_LENGTH)}
+                  // Strip only the whitespace and punctuation a paste can carry
+                  // in; every remaining character belongs to the code.
+                  onChange={(e) => setCode(e.target.value.replace(/[^A-Za-z0-9]/g, ''))}
+                  className={`${inputCls} text-center text-lg tracking-[0.3em] font-semibold`}
+                  placeholder="Paste the code from the email"
                 />
               </div>
               {passwordFields}

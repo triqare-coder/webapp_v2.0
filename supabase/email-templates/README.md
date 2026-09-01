@@ -6,17 +6,24 @@ own — it has to be pushed to the project.
 
 ## Why these exist
 
-The password-reset email used to send `{{ .ConfirmationURL }}` (a link). Both
-clients ask the user to type the emailed code instead — 8 digits, per the
-project's Auth → Email OTP Length setting:
+The password-reset email used to send `{{ .ConfirmationURL }}` (a link). Every
+client below asks the user to type the emailed code instead:
 
-| client | screen | call |
-| --- | --- | --- |
-| mobile | `Triqare-app/app/(auth)/forgot-password.tsx` | `verifyOtp({ type: 'recovery' })` |
-| web | `web-production/src/app/auth/reset/page.tsx` | `verifyOtp({ type: 'recovery' })` |
+| client | screen | call | template |
+| --- | --- | --- | --- |
+| mobile | `Triqare-app/app/(auth)/forgot-password.tsx` | `verifyOtp({ type: 'recovery' })` | `recovery.html` |
+| web | `web-production/src/app/auth/reset/page.tsx` | `verifyOtp({ type: 'recovery' })` | `recovery.html` |
+| mobile | `Triqare-app/app/(auth)/sign-up.tsx` | `verifyOtp({ type: 'signup' })` | `confirmation.html` |
 
-So `recovery.html` must keep `{{ .Token }}`. A link-only template leaves both
-clients waiting for a code that never arrives.
+So both files must keep `{{ .Token }}`. A link-only template leaves the client
+waiting for a code that never arrives.
+
+None of the three screens assumes a length or an alphabet any more. They used to:
+each pinned the code to exactly 8 digits with a numeric keyboard, a `maxLength`,
+and an input filter that deleted every non-digit as it was typed — so a token
+containing a letter could not be entered at all, whatever the Dashboard's
+`mailer_otp_length` happened to be set to. They now accept 6–12 alphanumeric
+characters and let `verifyOtp` decide.
 
 ## Applying
 
@@ -37,6 +44,9 @@ project ref is read from `NEXT_PUBLIC_SUPABASE_URL` in `.env.local`.
 - `recovery.html` says the code expires in 1 hour, which matches the default
   email OTP expiry. If Authentication → Sign In / Providers → Email OTP expiry is
   changed, change the copy too.
-- Mobile sign-up (`Triqare-app/app/(auth)/sign-up.tsx`) verifies with
-  `type: 'signup'` and has the same requirement on the **Confirm signup**
-  template — not covered by a file here yet.
+- The Dashboard subject for `confirmation.html` is
+  `Your Triqare verification code`.
+- Worth confirming in the Dashboard when a code is reported as unreadable:
+  Authentication → Sign In / Providers → **Email OTP Length**. The clients no
+  longer depend on it, but the email copy ("expires in 1 hour") tracks the
+  neighbouring **Email OTP Expiration** setting.

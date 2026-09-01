@@ -3,9 +3,10 @@
  * Push the version-controlled Supabase Auth email templates
  * (supabase/email-templates/*.html) to the live project via the Management API.
  *
- * Exists because the reset-password email must carry the 6-digit {{ .Token }}
- * instead of a reset link — both clients complete the reset by asking the user to
- * type the code — and the Dashboard is the only other place that setting lives.
+ * Exists because the reset-password and confirm-signup emails must carry the
+ * {{ .Token }} code instead of a link — both clients complete those flows by
+ * asking the user to type the code — and the Dashboard is the only other place
+ * that setting lives.
  *
  * Usage (from web-production/):
  *   SUPABASE_ACCESS_TOKEN=sbp_... node scripts/apply-auth-email-templates.js            # show current, then apply
@@ -27,6 +28,16 @@ const TEMPLATES = {
     subject: 'Your Triqare password reset code',
     subjectKey: 'mailer_subjects_recovery',
     contentKey: 'mailer_templates_recovery_content',
+  },
+  // Sign-up confirmation. Both clients verify with verifyOtp({ type: 'signup' }),
+  // i.e. they ask the user to type a code — so this template must carry
+  // {{ .Token }} too. Supabase's stock template sends {{ .ConfirmationURL }}
+  // instead, which leaves the verify screen waiting for a code the email never
+  // contains.
+  confirmation: {
+    subject: 'Your Triqare verification code',
+    subjectKey: 'mailer_subjects_confirmation',
+    contentKey: 'mailer_templates_confirmation_content',
   },
 }
 
