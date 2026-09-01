@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient as createSSRServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -69,8 +70,14 @@ export async function createServerSupabaseClient() {
  * and `appUser` is the matching public.users row (id, role, ...). Either may be
  * null. Uses the service-role client for the users lookup so it is not gated by
  * RLS (the caller is already authenticated via the session client).
+ *
+ * Wrapped in React `cache()`: this costs a round trip to the Supabase Auth server
+ * (getUser revalidates the token, deliberately — getSession would not) plus a
+ * users lookup, and a request that authenticates through more than one guard
+ * would otherwise pay for both. The cache is per-request, so it never leaks one
+ * caller's identity into another's request.
  */
-export async function getAuthedUser() {
+export const getAuthedUser = cache(async () => {
   const supabase = await createServerSupabaseClient()
   const {
     data: { user },
@@ -86,4 +93,4 @@ export async function getAuthedUser() {
     .maybeSingle()
 
   return { user, appUser }
-}
+})

@@ -19,7 +19,7 @@ export async function GET() {
   try {
     const { data: drivers, error } = await supabase
       .from('drivers')
-      .select('user_id, status, is_available, current_request_id')
+      .select('user_id, status, is_available, current_request_id, last_updated_at')
       .eq('transport_company_id', companyUserId)
     if (error) {
       return NextResponse.json({ error: 'Failed to load drivers', details: error.message }, { status: 500 })

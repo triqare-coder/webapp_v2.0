@@ -23,9 +23,17 @@ import {
   UserPlus,
   Building2,
   Loader2,
-  Plus
+  Plus,
+  Wifi,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  formatLastSeen,
+  getDriverPresence,
+  PRESENCE_BADGE_CLASS,
+  PRESENCE_STALE_MINUTES,
+  summarisePresence,
+} from '@/lib/driverPresence'
 import Link from 'next/link'
 
 interface Driver {
@@ -33,6 +41,8 @@ interface Driver {
   transport_company_id: string
   license_number: string
   status: 'available' | 'assigned' | 'on_trip' | 'inactive'
+  current_request_id?: string | null
+  last_updated_at?: string | null
   is_verified: boolean
   user?: {
     id: string
@@ -84,6 +94,8 @@ interface TransportCompany {
 
 interface TransportDashboardStats {
   totalDrivers: number
+  onlineDrivers: number
+  staleDrivers: number
   availableDrivers: number
   busyDrivers: number
   offlineDrivers: number
@@ -119,8 +131,18 @@ export default function TransportDashboardPage() {
       if (!silent) setIsLoading(true)
       setError(null)
 
-      // Fetch dashboard stats
-      const statsResponse = await fetch('/api/transport/dashboard/stats')
+      // These four endpoints do not depend on each other, but they used to be
+      // awaited one after another — and every serverless request pays for a
+      // Supabase session check in middleware plus another in the route handler
+      // before it touches a table, so the page waited on four round trips'
+      // worth of auth it could have overlapped.
+      const [statsResponse, companyResponse, driversResponse, sosResponse] = await Promise.all([
+        fetch('/api/transport/dashboard/stats'),
+        fetch('/api/transport/company'),
+        fetch('/api/transport/drivers?limit=10'),
+        fetch('/api/transport/sos-requests?limit=10'),
+      ])
+
       if (statsResponse.ok) {
         const statsData = await statsResponse.json()
         if (statsData.success) {
@@ -128,8 +150,6 @@ export default function TransportDashboardPage() {
         }
       }
 
-      // Fetch company information
-      const companyResponse = await fetch('/api/transport/company')
       if (companyResponse.ok) {
         const companyData = await companyResponse.json()
         if (companyData.success) {
@@ -137,8 +157,6 @@ export default function TransportDashboardPage() {
         }
       }
 
-      // Fetch recent drivers for display
-      const driversResponse = await fetch('/api/transport/drivers?limit=10')
       if (driversResponse.ok) {
         const driversData = await driversResponse.json()
         if (driversData.success) {
@@ -146,8 +164,6 @@ export default function TransportDashboardPage() {
         }
       }
 
-      // Fetch recent SOS requests for display
-      const sosResponse = await fetch('/api/transport/sos-requests?limit=10')
       if (sosResponse.ok) {
         const sosData = await sosResponse.json()
         if (sosData.success) {
@@ -200,6 +216,16 @@ export default function TransportDashboardPage() {
 
   // Use stats from API or fallback to calculated values
   const availableDrivers = stats?.availableDrivers || drivers.filter(d => d.status === 'available').length
+  // Fall back to the loaded driver page when the stats call has not landed yet.
+  const presenceFallback = summarisePresence(
+    drivers.map((d) => ({
+      status: d.status,
+      lastUpdatedAt: d.last_updated_at,
+      currentRequestId: d.current_request_id,
+    })),
+  )
+  const onlineDrivers = stats?.onlineDrivers ?? presenceFallback.online
+  const staleDrivers = stats?.staleDrivers ?? presenceFallback.stale
   const onTripDrivers = stats?.busyDrivers || drivers.filter(d => d.status === 'on_trip' || d.status === 'assigned').length
   const activeCases = stats?.activeAssignments || sosRequests.filter(r => r.status === 'driver_assigned' || r.status === 'in_progress').length
   const completedToday = stats?.completedToday || sosRequests.filter(r => {
@@ -208,16 +234,6 @@ export default function TransportDashboardPage() {
     const completedDate = new Date(r.completed_at).toDateString()
     return today === completedDate
   }).length
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'available': return 'bg-green-100 text-green-800'
-      case 'assigned':
-      case 'on_trip': return 'bg-blue-100 text-blue-800'
-      case 'inactive': return 'bg-gray-100 text-gray-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
 
   const getStatusLabel = (status: string) => {
     switch (status) {
@@ -328,6 +344,24 @@ export default function TransportDashboardPage() {
             </CardContent>
           </Card>
 
+          {/* "Available" is a flag the driver sets once and it survives a
+              force-quit, so it answered "who declared themselves on duty", never
+              "who is reachable now". Presence adds the app's position heartbeat;
+              both are shown because dispatch cares about the difference. */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Online Now</CardTitle>
+              <Wifi className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{onlineDrivers}</div>
+              <p className="text-xs text-muted-foreground">
+                Live position within {PRESENCE_STALE_MINUTES} min
+                {staleDrivers > 0 ? ` · ${staleDrivers} on duty` : ''}
+              </p>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Available Drivers</CardTitle>
@@ -336,7 +370,7 @@ export default function TransportDashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold text-green-600">{availableDrivers}</div>
               <p className="text-xs text-muted-foreground">
-                Ready for assignment
+                Marked on duty
               </p>
             </CardContent>
           </Card>
@@ -460,9 +494,22 @@ export default function TransportDashboardPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Badge className={getStatusColor(driver.status)}>
-                        {getStatusLabel(driver.status)}
-                      </Badge>
+                      {(() => {
+                        const p = getDriverPresence({
+                          status: driver.status,
+                          lastUpdatedAt: driver.last_updated_at,
+                          currentRequestId: driver.current_request_id,
+                        })
+                        return (
+                          <Badge
+                            className={PRESENCE_BADGE_CLASS[p.presence]}
+                            title={`Duty status: ${getStatusLabel(driver.status)} · last position ${formatLastSeen(p.minutesSinceHeartbeat)}`}
+                          >
+                            <span className="mr-1">●</span>
+                            {p.label}
+                          </Badge>
+                        )
+                      })()}
                       {driver.is_verified && (
                         <CheckCircle className="h-4 w-4 text-green-500" />
                       )}

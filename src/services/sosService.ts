@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { type EmergencyContact as ExistingEmergencyContact } from '@/services/emergencyContactService'
 import { SOSRequestService } from '@/services/sosRequestService'
 import { type SOSStatus, SOS_TERMINAL_STATUSES } from '@/lib/sosStatus'
+import { formatLastSeen, getDriverPresence } from '@/lib/driverPresence'
 
 export interface SOSRequest {
   id: string
@@ -1303,24 +1304,27 @@ export class SOSService {
         const isAssigned = busyDriverMap.has(user.id)
         const assignment = busyDriverMap.get(user.id)
 
-        // Determine status based on various factors
-        let status = 'offline'
+        // Presence comes from the driver's own app state (drivers.status + the
+        // location heartbeat), never from users.last_sign_in_at — the mobile app
+        // does not write that column, so the old rule resolved every driver to
+        // 'offline' regardless of whether they were on duty. See
+        // src/lib/driverPresence.ts.
+        const presence = getDriverPresence({
+          status: driverData?.status,
+          lastUpdatedAt: driverData?.last_updated_at,
+          currentRequestId: driverData?.current_request_id,
+        })
 
-        // Check if driver has current_request_id or is in busy status
-        if (driverData?.current_request_id || driverData?.status === 'assigned' || driverData?.status === 'on_trip') {
-          status = 'busy'
-        } else if (isAssigned) {
-          status = 'busy'
-        } else if (user.is_active && (driverData?.status === 'available' || !driverData)) {
-          // Consider online if user is active and driver status is available (or no driver record)
-          const lastSignIn = user.last_sign_in_at ? new Date(user.last_sign_in_at) : null
-          const now = new Date()
-          const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-
-          if (lastSignIn && lastSignIn > twentyFourHoursAgo) {
-            status = 'online'
-          }
-        }
+        // A driver holding a live SOS reads as busy even if their own row has not
+        // caught up yet.
+        const status =
+          presence.presence === 'on_trip' || isAssigned
+            ? 'busy'
+            : presence.presence === 'online'
+              ? 'online'
+              : presence.presence === 'stale'
+                ? 'stale'
+                : 'offline'
 
         return {
           // Driver table fields (with defaults if no driver record)
@@ -1362,6 +1366,8 @@ export class SOSService {
 
           // Calculated status
           status,
+          last_seen: formatLastSeen(presence.minutesSinceHeartbeat),
+          minutes_since_heartbeat: presence.minutesSinceHeartbeat,
           current_assignment: assignment?.current_assignment || null,
           assigned_at: assignment?.assigned_at || null
         }

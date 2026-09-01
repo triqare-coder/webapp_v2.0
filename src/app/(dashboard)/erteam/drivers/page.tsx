@@ -14,7 +14,6 @@ import {
   Clock,
   MapPin,
   Phone,
-  Activity,
   CheckCircle,
   AlertTriangle,
   Eye,
@@ -193,6 +192,7 @@ export default function DriversPage() {
     { value: 'all', label: 'All Status' },
     { value: 'online', label: 'Online' },
     { value: 'busy', label: 'Busy (SOS)' },
+    { value: 'stale', label: 'On duty (no live signal)' },
     { value: 'offline', label: 'Offline' }
   ]
 
@@ -222,6 +222,8 @@ export default function DriversPage() {
         return <CheckCircle className="h-4 w-4" />
       case 'busy':
         return <AlertTriangle className="h-4 w-4" />
+      case 'stale':
+        return <Clock className="h-4 w-4" />
       case 'offline':
         return <User className="h-4 w-4" />
       default:
@@ -364,14 +366,18 @@ export default function DriversPage() {
               </div>
             </CardContent>
           </Card>
+          {/* Drivers who declare themselves available but whose app has stopped
+              reporting a position — still dispatchable by push, just not showing
+              a live location. The tile this replaced showed an average rating the
+              schema has never carried, so it always read 0.0. */}
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Avg Rating</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.avgRating.toFixed(1)}</p>
+                  <p className="text-sm font-medium text-gray-600">On Duty (no signal)</p>
+                  <p className="text-2xl font-bold text-amber-600">{stats.stale}</p>
                 </div>
-                <Activity className="h-8 w-8 text-gray-600" />
+                <Clock className="h-8 w-8 text-amber-600" />
               </div>
             </CardContent>
           </Card>
@@ -541,7 +547,9 @@ export default function DriversPage() {
                         </div>
                         <div className="flex items-center text-sm text-gray-600">
                           <Clock className="h-4 w-4 mr-2" />
-                          Last updated: {hoursWorked}h ago
+                          {/* Whole hours rounded a driver who reported three minutes
+                              ago down to "0h ago"; last_seen keeps the minutes. */}
+                          Last seen: {driver.last_seen ?? `${hoursWorked}h ago`}
                         </div>
                         <div className="flex items-center text-sm text-gray-600">
                           <User className="h-4 w-4 mr-2" />

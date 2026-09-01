@@ -280,6 +280,8 @@ export function useDriverStats() {
     on_trip: number
     inactive: number
     verified: number
+    online: number
+    stale: number
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

@@ -45,8 +45,13 @@ export interface ERTDriverWithStatus {
   state?: { id: string; name: string }
   city?: { id: string; name: string }
 
-  // Calculated status for ERT view
-  status: 'online' | 'offline' | 'busy'
+  // Calculated status for ERT view. 'stale' = the driver still declares
+  // themselves available but their app has stopped reporting a position, so the
+  // dashboard must not present them as reachable. See src/lib/driverPresence.ts.
+  status: 'online' | 'offline' | 'busy' | 'stale'
+  /** Human-readable age of the last position report, e.g. "3 min ago". */
+  last_seen?: string
+  minutes_since_heartbeat?: number | null
   current_assignment?: {
     id: string
     status: string
@@ -57,7 +62,7 @@ export interface ERTDriverWithStatus {
 
 export interface ERTDriverFilters {
   search?: string
-  status?: 'all' | 'online' | 'offline' | 'busy'
+  status?: 'all' | 'online' | 'offline' | 'busy' | 'stale'
   shift?: 'all' | 'day' | 'night' | 'rotating'
   country_id?: string
   state_id?: string
@@ -69,6 +74,7 @@ export interface ERTDriverStats {
   online: number
   offline: number
   busy: number
+  stale: number
   avgRating: number
 }
 
@@ -154,6 +160,7 @@ export function useERTDrivers(filters: ERTDriverFilters = {}) {
     const online = drivers.filter(d => d.status === 'online').length
     const offline = drivers.filter(d => d.status === 'offline').length
     const busy = drivers.filter(d => d.status === 'busy').length
+    const stale = drivers.filter(d => d.status === 'stale').length
 
     // For now, we'll set avgRating to 0 since rating info isn't in drivers table
     // This could be enhanced later by joining with additional rating data
@@ -164,6 +171,7 @@ export function useERTDrivers(filters: ERTDriverFilters = {}) {
       online,
       offline,
       busy,
+      stale,
       avgRating
     }
   }, [drivers])
@@ -185,6 +193,8 @@ export function useERTStatusColor(status: string) {
       return 'bg-green-100 text-green-800'
     case 'busy':
       return 'bg-red-100 text-red-800'
+    case 'stale':
+      return 'bg-amber-100 text-amber-800'
     case 'offline':
       return 'bg-gray-100 text-gray-800'
     default:
@@ -212,6 +222,8 @@ export function getERTStatusIcon(status: string) {
       return '🟢'
     case 'busy':
       return '🔴'
+    case 'stale':
+      return '🟠'
     case 'offline':
       return '⚫'
     default:

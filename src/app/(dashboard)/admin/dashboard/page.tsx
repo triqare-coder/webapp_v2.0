@@ -28,6 +28,10 @@ interface AdminDashboardStats {
   totalHospitals: number
   activeEmergencies: number
   totalDrivers: number
+  driversOnline: number
+  driversOnTrip: number
+  driversStale: number
+  driversOffline: number
   completedToday: number
   avgResponseTime: string
   roleDistribution: Record<string, number>
@@ -176,7 +180,16 @@ export default function AdminDashboardPage() {
           <StatCard label="Hospitals" value={stats.totalHospitals} sub="Across the network" icon={Building2} tint="navy" />
           <StatCard label="Active Emergencies" value={stats.activeEmergencies} sub={stats.activeEmergencies > 0 ? 'Requires attention' : 'All clear'} icon={AlertTriangle} tint="red" />
           <StatCard label="Avg Response Time" value={stats.avgResponseTime} sub="SOS raised to driver assigned" icon={Clock} tint="amber" />
-          <StatCard label="Total Drivers" value={stats.totalDrivers} sub="Registered drivers" icon={UserCheck} tint="navy" />
+          {/* "Total Drivers" alone never answered the question operations actually
+              asks — who can be dispatched right now. Presence is derived from the
+              driver app's own state (see src/lib/driverPresence.ts). */}
+          <StatCard
+            label="Drivers Online"
+            value={stats.driversOnline}
+            sub={`${stats.driversOnTrip} on trip · ${stats.driversStale} on duty · ${stats.totalDrivers} registered`}
+            icon={UserCheck}
+            tint="emerald"
+          />
           <StatCard label="Resolved Today" value={stats.completedToday} sub="Reached hospital today" icon={TrendingUp} tint="emerald" />
           <StatCard label="SOS (24h)" value={stats.recentActivity.newSOS} sub="Raised in last 24 hours" icon={Shield} tint="red" />
         </div>

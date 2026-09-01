@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from 'sonner'
 
 import {
+  Activity,
   Plus,
   Search,
   UserCheck,
@@ -41,6 +42,12 @@ import { useCountries, useStates, useCities } from '@/hooks/useLocations'
 import { useServerPagination } from '@/hooks/useServerPagination'
 import { PaginationWithInfo } from '@/components/ui/pagination'
 import { uploadCsvInChunks } from '@/lib/csv/uploadCsvInChunks'
+import {
+  formatLastSeen,
+  getDriverPresence,
+  PRESENCE_BADGE_CLASS,
+  PRESENCE_STALE_MINUTES,
+} from '@/lib/driverPresence'
 
 export default function DriversPage() {
   // Search and filter states
@@ -271,6 +278,23 @@ export default function DriversPage() {
     }
   }
 
+  // Live presence, as opposed to `drivers.status` (the duty state below). An
+  // admin asking "who is online" wants the app's own heartbeat, not whether
+  // someone once set themselves available and then killed the app.
+  const getPresenceBadge = (driver: { status: string; last_updated_at?: string; current_request_id?: string }) => {
+    const { presence, label, minutesSinceHeartbeat } = getDriverPresence({
+      status: driver.status,
+      lastUpdatedAt: driver.last_updated_at,
+      currentRequestId: driver.current_request_id,
+    })
+    return (
+      <Badge className={PRESENCE_BADGE_CLASS[presence]} title={`Last position: ${formatLastSeen(minutesSinceHeartbeat)}`}>
+        <span className="mr-1">●</span>
+        {label}
+      </Badge>
+    )
+  }
+
   // Get status badge
   const getStatusBadge = (status: string) => {
     const statusConfig = {
@@ -362,7 +386,7 @@ export default function DriversPage() {
 
       {/* Stats Cards */}
       {!statsLoading && stats && (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Drivers</CardTitle>
@@ -370,6 +394,21 @@ export default function DriversPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.total}</div>
+            </CardContent>
+          </Card>
+          {/* Online is not the same as Available: "Available" is a flag the
+              driver sets once, "Online" additionally requires their app to still
+              be reporting a position. */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Online Now</CardTitle>
+              <Activity className="h-4 w-4 text-emerald-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-emerald-600">{stats.online}</div>
+              <p className="text-xs text-muted-foreground">
+                Live position within {PRESENCE_STALE_MINUTES} min · {stats.stale} on duty
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -586,6 +625,7 @@ export default function DriversPage() {
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-2">
                         <h3 className="text-lg font-semibold text-gray-900">{driver.user?.full_name}</h3>
+                        {getPresenceBadge(driver)}
                         {getStatusBadge(driver.status)}
                         {getVerificationBadge(driver.is_verified)}
                       </div>

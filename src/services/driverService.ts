@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { summarisePresence } from '@/lib/driverPresence'
 
 /**
  * Nullable UNIQUE columns whose blank/whitespace values MUST be stored as NULL,
@@ -438,14 +439,27 @@ export class DriverService {
 
   static async getDriverStats() {
     try {
-      const [totalResult, availableResult, assignedResult, onTripResult, inactiveResult, verifiedResult] = await Promise.all([
+      const [totalResult, availableResult, assignedResult, onTripResult, inactiveResult, verifiedResult, presenceRows] = await Promise.all([
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }),
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('status', 'available'),
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('status', 'assigned'),
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('status', 'on_trip'),
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('status', 'inactive'),
-        supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('is_verified', true)
+        supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('is_verified', true),
+        // `available` is a duty flag the driver sets once; presence additionally
+        // requires the app to still be reporting a position. The two diverge as
+        // soon as someone force-quits, which is why the fleet can show 18
+        // "available" drivers and nobody actually reachable.
+        supabase.from('drivers').select('status, last_updated_at, current_request_id')
       ])
+
+      const presence = summarisePresence(
+        (presenceRows.data || []).map((d: { status: string; last_updated_at?: string; current_request_id?: string }) => ({
+          status: d.status,
+          lastUpdatedAt: d.last_updated_at,
+          currentRequestId: d.current_request_id,
+        }))
+      )
 
       return {
         total: totalResult.count || 0,
@@ -453,7 +467,9 @@ export class DriverService {
         assigned: assignedResult.count || 0,
         on_trip: onTripResult.count || 0,
         inactive: inactiveResult.count || 0,
-        verified: verifiedResult.count || 0
+        verified: verifiedResult.count || 0,
+        online: presence.online,
+        stale: presence.stale
       }
     } catch (error) {
       console.error('Error in getDriverStats:', error)

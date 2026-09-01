@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthedUser } from '@/lib/supabase/server'
+import { summarisePresence } from '@/lib/driverPresence'
 
 // Canonical "completed" SOS state (an SOS reaching the hospital). Legacy 'completed'
 // does not exist in the live sos_requests status enum.
@@ -47,114 +48,101 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get total drivers for this transport company
-    const { count: totalDrivers } = await supabase
-      .from('drivers')
-      .select('*', { count: 'exact', head: true })
-      .eq('transport_company_id', transportCompany.user_id)
-
-    // Get available drivers
-    const { count: availableDrivers } = await supabase
-      .from('drivers')
-      .select('*', { count: 'exact', head: true })
-      .eq('transport_company_id', transportCompany.user_id)
-      .eq('status', 'available')
-
-    // Get busy drivers (assigned + on_trip)
-    const { count: assignedDrivers } = await supabase
-      .from('drivers')
-      .select('*', { count: 'exact', head: true })
-      .eq('transport_company_id', transportCompany.user_id)
-      .eq('status', 'assigned')
-
-    const { count: onTripDrivers } = await supabase
-      .from('drivers')
-      .select('*', { count: 'exact', head: true })
-      .eq('transport_company_id', transportCompany.user_id)
-      .eq('status', 'on_trip')
-
-    const busyDrivers = (assignedDrivers || 0) + (onTripDrivers || 0)
-
-    // Get offline/inactive drivers
-    const { count: offlineDrivers } = await supabase
-      .from('drivers')
-      .select('*', { count: 'exact', head: true })
-      .eq('transport_company_id', transportCompany.user_id)
-      .eq('status', 'inactive')
-
-    // Get all drivers for this company to check assignments
+    // Every driver figure on the dashboard comes from one read of this company's
+    // driver rows. It used to be six separate count queries awaited in sequence —
+    // ~150ms each against a table holding 27 rows fleet-wide, so the tiles cost
+    // roughly a second of round trips to count something the route could add up
+    // itself.
     const { data: companyDrivers } = await supabase
       .from('drivers')
-      .select('user_id')
+      .select('user_id, status, last_updated_at, current_request_id')
       .eq('transport_company_id', transportCompany.user_id)
 
-    const driverIds = companyDrivers?.map(d => d.user_id) || []
+    const driverRows = companyDrivers || []
+    const driverIds = driverRows.map(d => d.user_id)
 
-    // Get active assignments (SOS requests assigned to this company's drivers).
-    // Canonical inline model: sos_requests.driver_id; active = not in a terminal state.
-    let activeAssignments = 0
-    if (driverIds.length > 0) {
-      const { count } = await supabase
-        .from('sos_requests')
-        .select('*', { count: 'exact', head: true })
-        .in('driver_id', driverIds)
-        .not('status', 'in', '("Arrived at Hospital","Cancelled")')
-      activeAssignments = count || 0
-    }
+    const totalDrivers = driverRows.length
+    const availableDrivers = driverRows.filter(d => d.status === 'available').length
+    const busyDrivers = driverRows.filter(
+      d => d.status === 'assigned' || d.status === 'on_trip'
+    ).length
+    const offlineDrivers = driverRows.filter(d => d.status === 'inactive').length
 
-    // Get completed trips today
+    // `available` is a flag the driver sets once, so on its own it cannot answer
+    // "who is online right now" — see src/lib/driverPresence.ts.
+    const presence = summarisePresence(
+      driverRows.map((d) => ({
+        status: d.status,
+        lastUpdatedAt: d.last_updated_at,
+        currentRequestId: d.current_request_id,
+      }))
+    )
+
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
-
-    let completedToday = 0
-    if (driverIds.length > 0) {
-      const { count } = await supabase
-        .from('sos_requests')
-        .select('*', { count: 'exact', head: true })
-        .in('driver_id', driverIds)
-        .eq('status', COMPLETED_STATUS)
-        .gte('completed_at', today.toISOString())
-        .lt('completed_at', tomorrow.toISOString())
-      completedToday = count || 0
-    }
-
-    // Get total completed trips this month
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-    let completedThisMonth = 0
-    if (driverIds.length > 0) {
-      const { count } = await supabase
-        .from('sos_requests')
-        .select('*', { count: 'exact', head: true })
-        .in('driver_id', driverIds)
-        .eq('status', COMPLETED_STATUS)
-        .gte('completed_at', firstDayOfMonth.toISOString())
-      completedThisMonth = count || 0
-    }
 
-    // Calculate average response time for this company's drivers
+    // The four SOS reads below are independent of each other, so they go out
+    // together rather than one after the next. Canonical inline model:
+    // sos_requests.driver_id; active = not in a terminal state.
+    const [
+      { count: activeCount },
+      { count: todayCount },
+      { count: monthCount },
+      { data: completedSOS },
+    ] = driverIds.length > 0
+      ? await Promise.all([
+          supabase
+            .from('sos_requests')
+            .select('*', { count: 'exact', head: true })
+            .in('driver_id', driverIds)
+            .not('status', 'in', '("Arrived at Hospital","Cancelled")'),
+          supabase
+            .from('sos_requests')
+            .select('*', { count: 'exact', head: true })
+            .in('driver_id', driverIds)
+            .eq('status', COMPLETED_STATUS)
+            .gte('completed_at', today.toISOString())
+            .lt('completed_at', tomorrow.toISOString()),
+          supabase
+            .from('sos_requests')
+            .select('*', { count: 'exact', head: true })
+            .in('driver_id', driverIds)
+            .eq('status', COMPLETED_STATUS)
+            .gte('completed_at', firstDayOfMonth.toISOString()),
+          supabase
+            .from('sos_requests')
+            .select('requested_at, assigned_at')
+            .in('driver_id', driverIds)
+            .eq('status', COMPLETED_STATUS)
+            .not('assigned_at', 'is', null)
+            .order('requested_at', { ascending: false })
+            .limit(50),
+        ])
+      : [
+          { count: 0 },
+          { count: 0 },
+          { count: 0 },
+          { data: [] as { requested_at: string; assigned_at: string | null }[] },
+        ]
+
+    const activeAssignments = activeCount || 0
+    const completedToday = todayCount || 0
+    const completedThisMonth = monthCount || 0
+
+    // Average response time for this company's drivers.
     let avgResponseTime = 'N/A'
-    if (driverIds.length > 0) {
-      const { data: completedSOS } = await supabase
-        .from('sos_requests')
-        .select('requested_at, assigned_at')
-        .in('driver_id', driverIds)
-        .eq('status', COMPLETED_STATUS)
-        .not('assigned_at', 'is', null)
-        .order('requested_at', { ascending: false })
-        .limit(50)
-
-      if (completedSOS && completedSOS.length > 0) {
-        const totalResponseTime = completedSOS.reduce((sum, sos) => {
-          const requested = new Date(sos.requested_at)
-          const assigned = new Date(sos.assigned_at!)
-          const diffMinutes = (assigned.getTime() - requested.getTime()) / (1000 * 60)
-          return sum + diffMinutes
-        }, 0)
-        const avgMinutes = totalResponseTime / completedSOS.length
-        avgResponseTime = `${avgMinutes.toFixed(1)} min`
-      }
+    if (completedSOS && completedSOS.length > 0) {
+      const totalResponseTime = completedSOS.reduce((sum, sos) => {
+        const requested = new Date(sos.requested_at)
+        const assigned = new Date(sos.assigned_at!)
+        const diffMinutes = (assigned.getTime() - requested.getTime()) / (1000 * 60)
+        return sum + diffMinutes
+      }, 0)
+      const avgMinutes = totalResponseTime / completedSOS.length
+      avgResponseTime = `${avgMinutes.toFixed(1)} min`
     }
 
     // Get recent driver activity. NOTE: avoid PostgREST nested embeds (FK relationships
@@ -180,6 +168,8 @@ export async function GET(request: NextRequest) {
 
     const stats = {
       totalDrivers: totalDrivers || 0,
+      onlineDrivers: presence.online,
+      staleDrivers: presence.stale,
       availableDrivers: availableDrivers || 0,
       busyDrivers: busyDrivers,
       offlineDrivers: offlineDrivers || 0,

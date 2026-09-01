@@ -70,10 +70,12 @@ import {
   type DriverLiveStatus,
   type DriverDashboardStats,
 } from '@/lib/transport/driverDashboard'
+import { formatLastSeen, getDriverPresence } from '@/lib/driverPresence'
 
 const LIVE_STATUS_STYLE: Record<DriverLiveStatus, string> = {
   on_trip: 'bg-blue-100 text-blue-800',
   online: 'bg-green-100 text-green-800',
+  stale: 'bg-amber-100 text-amber-800',
   offline: 'bg-gray-100 text-gray-700',
   unavailable: 'bg-amber-100 text-amber-800',
 }
@@ -589,6 +591,18 @@ export default function TransportDriversPage() {
                           <Badge className={LIVE_STATUS_STYLE[live]}>
                             {DRIVER_STATUS_LABEL[live]}
                           </Badge>
+                          {/* An owner asking "is this driver online" needs the age
+                              of the last position report to judge the badge. */}
+                          <div className="text-xs text-gray-500">
+                            Last seen{' '}
+                            {formatLastSeen(
+                              getDriverPresence({
+                                status: driver.status,
+                                lastUpdatedAt: driver.last_updated_at,
+                                currentRequestId: driver.current_request_id,
+                              }).minutesSinceHeartbeat,
+                            )}
+                          </div>
                           {/* Auto-updating per-driver summary counts */}
                           <div className="flex items-center justify-end gap-3 text-xs">
                             <span className="text-gray-700">

@@ -221,6 +221,7 @@ export function useERTDriversRealtime(options: UseERTDriversRealtimeOptions = {}
     const online = drivers.filter(d => d.status === 'online').length
     const offline = drivers.filter(d => d.status === 'offline').length
     const busy = drivers.filter(d => d.status === 'busy').length
+    const stale = drivers.filter(d => d.status === 'stale').length
     const avgRating = 0 // Not available in current schema
 
     return {
@@ -228,6 +229,7 @@ export function useERTDriversRealtime(options: UseERTDriversRealtimeOptions = {}
       online,
       offline,
       busy,
+      stale,
       avgRating
     }
   }, [drivers])

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { SOS_ACTIVE_STATUSES } from '@/lib/sosStatus'
+import { summarisePresence } from '@/lib/driverPresence'
 
 /**
  * Admin dashboard metrics.
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
       { count: recentUsers },
       { data: usersByRole },
       { data: dispatched, error: dispatchedError },
+      { data: driverPresenceRows },
     ] = await Promise.all([
       supabase.from('users').select('*', { count: 'exact', head: true }),
       supabase.from('patients').select('*', { count: 'exact', head: true }),
@@ -76,6 +78,10 @@ export async function GET(request: NextRequest) {
         .not('assigned_at', 'is', null)
         .order('requested_at', { ascending: false })
         .limit(100),
+      // Who is actually on duty right now. The fleet is small enough to read in
+      // full; the derivation lives in src/lib/driverPresence.ts so the admin,
+      // transport and ER dashboards all answer "online" the same way.
+      supabase.from('drivers').select('status, last_updated_at, current_request_id'),
     ])
 
     // Average dispatch time. 'N/A' when nothing has been dispatched yet — a
@@ -105,12 +111,24 @@ export async function GET(request: NextRequest) {
         return acc
       }, {}) || {}
 
+    const driverPresence = summarisePresence(
+      (driverPresenceRows || []).map((d) => ({
+        status: d.status,
+        lastUpdatedAt: d.last_updated_at,
+        currentRequestId: d.current_request_id,
+      })),
+    )
+
     const stats = {
       totalUsers: totalUsers || 0,
       totalPatients: totalPatients || 0,
       totalHospitals: totalHospitals || 0,
       activeEmergencies: activeEmergencies || 0,
       totalDrivers: totalDrivers || 0,
+      driversOnline: driverPresence.online,
+      driversOnTrip: driverPresence.on_trip,
+      driversStale: driverPresence.stale,
+      driversOffline: driverPresence.offline,
       completedToday: completedToday || 0,
       avgResponseTime,
       roleDistribution,
