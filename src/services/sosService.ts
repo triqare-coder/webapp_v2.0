@@ -3,6 +3,7 @@ import { type EmergencyContact as ExistingEmergencyContact } from '@/services/em
 import { SOSRequestService } from '@/services/sosRequestService'
 import { type SOSStatus, SOS_TERMINAL_STATUSES } from '@/lib/sosStatus'
 import { formatLastSeen, getDriverPresence } from '@/lib/driverPresence'
+import { firstEmbedded } from '@/lib/postgrestEmbed'
 
 export interface SOSRequest {
   id: string
@@ -42,6 +43,8 @@ export interface SOSRequest {
 }
 
 export type EmergencyContact = ExistingEmergencyContact
+
+
 
 export interface Patient {
   user_id: string
@@ -1298,8 +1301,14 @@ export class SOSService {
 
       // Transform drivers with status
       const driversWithStatus = allDrivers?.map(user => {
-        // Get driver data (may be null if user doesn't have driver record)
-        const driverData = user.drivers?.[0] || null
+        // users -> drivers is a to-ONE relationship (drivers.user_id is the key),
+        // so PostgREST returns the embed as a single object, not an array. Reading
+        // it as `user.drivers[0]` therefore yielded undefined for every driver:
+        // the page fell back to 'Not provided' licences, no transport company, no
+        // location, and status 'offline' across the whole fleet. Accept either
+        // shape so a schema-cache change that flips it back cannot silently
+        // reintroduce that.
+        const driverData = firstEmbedded(user.drivers)
 
         const isAssigned = busyDriverMap.has(user.id)
         const assignment = busyDriverMap.get(user.id)
