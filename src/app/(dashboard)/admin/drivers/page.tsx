@@ -46,7 +46,6 @@ import {
   formatLastSeen,
   getDriverPresence,
   PRESENCE_BADGE_CLASS,
-  PRESENCE_STALE_MINUTES,
 } from '@/lib/driverPresence'
 
 export default function DriversPage() {
@@ -279,16 +278,30 @@ export default function DriversPage() {
   }
 
   // Live presence, as opposed to `drivers.status` (the duty state below). An
-  // admin asking "who is online" wants the app's own heartbeat, not whether
-  // someone once set themselves available and then killed the app.
-  const getPresenceBadge = (driver: { status: string; last_updated_at?: string; current_request_id?: string }) => {
+  // admin asking "who is online" wants to know who dispatch can actually reach —
+  // not whether someone once set themselves available and then killed the app,
+  // and not merely whether the app happens to be in the foreground right now.
+  const getPresenceBadge = (driver: {
+    status: string
+    last_updated_at?: string
+    current_request_id?: string
+    has_push_token?: boolean
+  }) => {
     const { presence, label, minutesSinceHeartbeat } = getDriverPresence({
       status: driver.status,
       lastUpdatedAt: driver.last_updated_at,
       currentRequestId: driver.current_request_id,
+      hasPushToken: driver.has_push_token,
     })
     return (
-      <Badge className={PRESENCE_BADGE_CLASS[presence]} title={`Last position: ${formatLastSeen(minutesSinceHeartbeat)}`}>
+      <Badge
+        className={PRESENCE_BADGE_CLASS[presence]}
+        title={
+          presence === 'unreachable'
+            ? 'Marked available, but no device is registered for push — an SOS cannot reach this driver.'
+            : `Last position: ${formatLastSeen(minutesSinceHeartbeat)}`
+        }
+      >
         <span className="mr-1">●</span>
         {label}
       </Badge>
@@ -396,19 +409,27 @@ export default function DriversPage() {
               <div className="text-2xl font-bold">{stats.total}</div>
             </CardContent>
           </Card>
-          {/* Online is not the same as Available: "Available" is a flag the
-              driver sets once, "Online" additionally requires their app to still
-              be reporting a position. */}
+          {/* On duty is not the same as Available: "Available" is a flag the
+              driver sets once and it survives a sign-out elsewhere, so this
+              additionally requires a registered device for dispatch to push to.
+              It deliberately does not lead with live GPS — that heartbeat is
+              foreground-only and reads 0 for a fleet with the app pocketed. */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Online Now</CardTitle>
+              <CardTitle className="text-sm font-medium">On Duty Now</CardTitle>
               <Activity className="h-4 w-4 text-emerald-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-emerald-600">{stats.online}</div>
+              <div className="text-2xl font-bold text-emerald-600">{stats.dispatchable}</div>
               <p className="text-xs text-muted-foreground">
-                Live position within {PRESENCE_STALE_MINUTES} min · {stats.stale} on duty
+                Reachable by dispatch
+                {stats.online > 0 ? ` · ${stats.online} sending live GPS` : ''}
               </p>
+              {stats.unreachable > 0 && (
+                <p className="mt-1 text-xs font-medium text-red-600">
+                  {stats.unreachable} available but unreachable
+                </p>
+              )}
             </CardContent>
           </Card>
           <Card>

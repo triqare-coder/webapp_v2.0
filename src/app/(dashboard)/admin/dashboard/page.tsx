@@ -21,6 +21,22 @@ import {
   UserCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  formatLastSeen,
+  PRESENCE_BADGE_CLASS,
+  PRESENCE_STALE_MINUTES,
+  type DriverPresence,
+} from '@/lib/driverPresence'
+
+interface OnDutyDriver {
+  id: string
+  name: string
+  phone: string | null
+  presence: DriverPresence
+  label: string
+  dispatchable: boolean
+  minutesSinceHeartbeat: number | null
+}
 
 interface AdminDashboardStats {
   totalUsers: number
@@ -28,10 +44,13 @@ interface AdminDashboardStats {
   totalHospitals: number
   activeEmergencies: number
   totalDrivers: number
+  driversDispatchable: number
   driversOnline: number
   driversOnTrip: number
   driversStale: number
+  driversUnreachable: number
   driversOffline: number
+  onDutyDrivers: OnDutyDriver[]
   completedToday: number
   avgResponseTime: string
   roleDistribution: Record<string, number>
@@ -87,7 +106,10 @@ export default function AdminDashboardPage() {
       }
 
       if (data.success) {
-        setStats(data.stats)
+        // A cached response from before the roster shipped has no onDutyDrivers;
+        // defaulting it here keeps the panel empty instead of white-screening on
+        // `.length`.
+        setStats({ ...data.stats, onDutyDrivers: data.stats.onDutyDrivers ?? [] })
       } else {
         throw new Error(data.error || 'Failed to fetch dashboard stats')
       }
@@ -181,17 +203,81 @@ export default function AdminDashboardPage() {
           <StatCard label="Active Emergencies" value={stats.activeEmergencies} sub={stats.activeEmergencies > 0 ? 'Requires attention' : 'All clear'} icon={AlertTriangle} tint="red" />
           <StatCard label="Avg Response Time" value={stats.avgResponseTime} sub="SOS raised to driver assigned" icon={Clock} tint="amber" />
           {/* "Total Drivers" alone never answered the question operations actually
-              asks — who can be dispatched right now. Presence is derived from the
-              driver app's own state (see src/lib/driverPresence.ts). */}
+              asks — who can be dispatched right now. This tile counts the drivers
+              dispatch would actually reach, NOT the ones sending live GPS: the
+              location heartbeat is foreground-only, so "online" reads 0 across the
+              whole fleet the moment drivers pocket their phones. Live GPS is shown
+              as a subset instead. See src/lib/driverPresence.ts. */}
           <StatCard
-            label="Drivers Online"
-            value={stats.driversOnline}
-            sub={`${stats.driversOnTrip} on trip · ${stats.driversStale} on duty · ${stats.totalDrivers} registered`}
+            label="Drivers On Duty"
+            value={stats.driversDispatchable}
+            sub={`${stats.driversOnTrip} on trip · ${stats.driversOnline} sending live GPS · ${stats.totalDrivers} registered`}
             icon={UserCheck}
             tint="emerald"
           />
           <StatCard label="Resolved Today" value={stats.completedToday} sub="Reached hospital today" icon={TrendingUp} tint="emerald" />
           <StatCard label="SOS (24h)" value={stats.recentActivity.newSOS} sub="Raised in last 24 hours" icon={Shield} tint="red" />
+        </div>
+
+        {/* Who, not just how many. The tile above can say "11 on duty" and still
+            leave the admin unable to name one of them; this is the list that
+            question was really asking for. Signed-out drivers are omitted — they
+            are a roster question, answered on /admin/drivers. */}
+        <div className={`${CARD} p-6`}>
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Drivers On Duty</h2>
+              <p className="text-xs text-slate-500">
+                Reachable by dispatch now · live GPS means a position in the last{' '}
+                {PRESENCE_STALE_MINUTES} min
+              </p>
+            </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/drivers">All drivers</Link>
+            </Button>
+          </div>
+
+          {stats.driversUnreachable > 0 && (
+            <div className="mb-4 flex items-start gap-3 rounded-2xl bg-red-50 px-4 py-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#cc3333]" />
+              <p className="text-sm text-[#cc3333]">
+                <span className="font-semibold">
+                  {stats.driversUnreachable} driver{stats.driversUnreachable === 1 ? '' : 's'} on
+                  duty with no app signal.
+                </span>{' '}
+                They are marked available but have no registered device, so an SOS push
+                cannot reach them. They need to sign in to the app again.
+              </p>
+            </div>
+          )}
+
+          {stats.onDutyDrivers.length > 0 ? (
+            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+              {stats.onDutyDrivers.map((driver) => (
+                <div
+                  key={driver.id}
+                  className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{driver.name}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {driver.phone || 'No phone on file'} · last position{' '}
+                      {formatLastSeen(driver.minutesSinceHeartbeat)}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${PRESENCE_BADGE_CLASS[driver.presence]}`}
+                  >
+                    {driver.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">
+              No drivers are on duty right now. {stats.totalDrivers} registered, all signed out.
+            </p>
+          )}
         </div>
 
         {/* System Overview + Role distribution */}

@@ -282,6 +282,8 @@ export function useDriverStats() {
     verified: number
     online: number
     stale: number
+    dispatchable: number
+    unreachable: number
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

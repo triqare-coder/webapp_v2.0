@@ -69,14 +69,48 @@ export async function GET(request: NextRequest) {
     const offlineDrivers = driverRows.filter(d => d.status === 'inactive').length
 
     // `available` is a flag the driver sets once, so on its own it cannot answer
-    // "who is online right now" — see src/lib/driverPresence.ts.
-    const presence = summarisePresence(
-      driverRows.map((d) => ({
-        status: d.status,
-        lastUpdatedAt: d.last_updated_at,
-        currentRequestId: d.current_request_id,
-      }))
-    )
+    // "who is online right now" — see src/lib/driverPresence.ts. Push
+    // reachability is what survives the driver pocketing the phone, so the
+    // company's on-duty drivers get their device_tokens checked.
+    const dutyDriverIds = driverRows
+      .filter(d => d.status === 'available')
+      .map(d => d.user_id)
+      .filter(Boolean)
+
+    let tokenUserIds: Set<string> | null = null
+    if (dutyDriverIds.length > 0) {
+      const { data: tokenRows, error: tokenError } = await supabase
+        .from('device_tokens')
+        .select('user_id')
+        .eq('is_active', true)
+        .in('user_id', dutyDriverIds)
+
+      // Leave it null on failure: hasPushToken then goes undefined and the
+      // derivation ignores it, rather than reporting the whole fleet unreachable.
+      if (tokenError) {
+        console.warn('Could not read device_tokens for presence:', tokenError.message)
+      } else {
+        tokenUserIds = new Set((tokenRows || []).map(t => t.user_id))
+      }
+    } else {
+      tokenUserIds = new Set<string>()
+    }
+
+    const presenceInputs = driverRows.map((d) => ({
+      userId: d.user_id as string,
+      status: d.status,
+      lastUpdatedAt: d.last_updated_at,
+      currentRequestId: d.current_request_id,
+      hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : undefined,
+    }))
+
+    const presence = summarisePresence(presenceInputs)
+
+    // The IDs the dashboard needs to badge each driver row it renders, so the
+    // client does not have to re-derive reachability without the token data.
+    const unreachableDriverIds = presenceInputs
+      .filter(d => d.hasPushToken === false && d.status === 'available')
+      .map(d => d.userId)
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -168,8 +202,14 @@ export async function GET(request: NextRequest) {
 
     const stats = {
       totalDrivers: totalDrivers || 0,
+      // Lead with the drivers dispatch can actually reach. `onlineDrivers`
+      // requires a live GPS heartbeat from a foreground-only watcher, so it
+      // reads 0 whenever the fleet has the app pocketed — see driverPresence.ts.
+      dispatchableDrivers: presence.dispatchable,
       onlineDrivers: presence.online,
       staleDrivers: presence.stale,
+      unreachableDrivers: presence.unreachable,
+      unreachableDriverIds,
       availableDrivers: availableDrivers || 0,
       busyDrivers: busyDrivers,
       offlineDrivers: offlineDrivers || 0,

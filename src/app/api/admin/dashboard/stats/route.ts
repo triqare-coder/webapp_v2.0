@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { SOS_ACTIVE_STATUSES } from '@/lib/sosStatus'
-import { summarisePresence } from '@/lib/driverPresence'
+import { getDriverPresence, summarisePresence } from '@/lib/driverPresence'
 
 /**
  * Admin dashboard metrics.
@@ -81,7 +81,9 @@ export async function GET(request: NextRequest) {
       // Who is actually on duty right now. The fleet is small enough to read in
       // full; the derivation lives in src/lib/driverPresence.ts so the admin,
       // transport and ER dashboards all answer "online" the same way.
-      supabase.from('drivers').select('status, last_updated_at, current_request_id'),
+      supabase
+        .from('drivers')
+        .select('user_id, status, last_updated_at, current_request_id'),
     ])
 
     // Average dispatch time. 'N/A' when nothing has been dispatched yet — a
@@ -111,13 +113,78 @@ export async function GET(request: NextRequest) {
         return acc
       }, {}) || {}
 
-    const driverPresence = summarisePresence(
-      (driverPresenceRows || []).map((d) => ({
-        status: d.status,
-        lastUpdatedAt: d.last_updated_at,
-        currentRequestId: d.current_request_id,
-      })),
-    )
+    // Push reachability. A driver's `available` flag survives a force-quit, so on
+    // its own it cannot say whether dispatch would reach them — six of the
+    // seventeen drivers claiming 'available' on live have no token at all. Only
+    // the drivers who declare themselves on duty need looking up.
+    const dutyDriverIds = (driverPresenceRows || [])
+      .filter((d) => d.status === 'available')
+      .map((d) => d.user_id)
+      .filter(Boolean)
+
+    let tokenUserIds: Set<string> | null = null
+    if (dutyDriverIds.length > 0) {
+      const { data: tokenRows, error: tokenError } = await supabase
+        .from('device_tokens')
+        .select('user_id')
+        .eq('is_active', true)
+        .in('user_id', dutyDriverIds)
+
+      // A failed lookup must not turn the whole fleet red: leaving this null
+      // makes hasPushToken undefined, which the derivation ignores.
+      if (tokenError) {
+        console.warn('Could not read device_tokens for presence:', tokenError.message)
+      } else {
+        tokenUserIds = new Set((tokenRows || []).map((t) => t.user_id))
+      }
+    } else {
+      tokenUserIds = new Set<string>()
+    }
+
+    const presenceInputs = (driverPresenceRows || []).map((d) => ({
+      userId: d.user_id as string,
+      status: d.status,
+      lastUpdatedAt: d.last_updated_at,
+      currentRequestId: d.current_request_id,
+      hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : undefined,
+    }))
+
+    const driverPresence = summarisePresence(presenceInputs)
+
+    // "Which drivers are online" needs names, not just a count — the admin
+    // dashboard could previously only show a tally, so the answer to "who?" was
+    // a different page. Only the dispatchable and the misconfigured are listed;
+    // signed-out drivers are a roster question, not a duty one.
+    const rosterIds = presenceInputs
+      .filter((d) => getDriverPresence(d).presence !== 'offline')
+      .map((d) => d.userId)
+
+    const { data: rosterUsers } = rosterIds.length > 0
+      ? await supabase.from('users').select('id, full_name, phone').in('id', rosterIds)
+      : { data: [] as { id: string; full_name: string | null; phone: string | null }[] }
+
+    const rosterUserById = Object.fromEntries((rosterUsers || []).map((u) => [u.id, u]))
+
+    const PRESENCE_RANK = { on_trip: 0, online: 1, stale: 2, unreachable: 3, offline: 4 }
+    const onDutyDrivers = presenceInputs
+      .map((d) => {
+        const p = getDriverPresence(d)
+        return {
+          id: d.userId,
+          name: rosterUserById[d.userId]?.full_name || 'Unknown driver',
+          phone: rosterUserById[d.userId]?.phone || null,
+          presence: p.presence,
+          label: p.label,
+          dispatchable: p.dispatchable,
+          minutesSinceHeartbeat: p.minutesSinceHeartbeat,
+        }
+      })
+      .filter((d) => d.presence !== 'offline')
+      .sort(
+        (a, b) =>
+          PRESENCE_RANK[a.presence] - PRESENCE_RANK[b.presence] ||
+          a.name.localeCompare(b.name),
+      )
 
     const stats = {
       totalUsers: totalUsers || 0,
@@ -125,10 +192,17 @@ export async function GET(request: NextRequest) {
       totalHospitals: totalHospitals || 0,
       activeEmergencies: activeEmergencies || 0,
       totalDrivers: totalDrivers || 0,
+      // The tile leads with `dispatchable`, not `online`. `online` requires a
+      // location heartbeat from a foreground-only watcher, so it reads 0 for a
+      // fleet whose drivers all have the app pocketed — a true number that
+      // answers the wrong question. See src/lib/driverPresence.ts.
+      driversDispatchable: driverPresence.dispatchable,
       driversOnline: driverPresence.online,
       driversOnTrip: driverPresence.on_trip,
       driversStale: driverPresence.stale,
+      driversUnreachable: driverPresence.unreachable,
       driversOffline: driverPresence.offline,
+      onDutyDrivers,
       completedToday: completedToday || 0,
       avgResponseTime,
       roleDistribution,

@@ -212,8 +212,41 @@ export class DriverService {
         throw new Error(error.message)
       }
 
+      // Annotate each row with push reachability so the list badges match the
+      // dashboard tiles. Only the drivers claiming to be on duty matter — for
+      // anyone signed out the flag is irrelevant, and leaving it undefined keeps
+      // the derivation from reading anything into it.
+      const rows = (data || []) as Driver[]
+      const dutyDriverIds = rows
+        .filter(d => d.status === 'available')
+        .map(d => d.user_id)
+        .filter(Boolean)
+
+      if (dutyDriverIds.length > 0) {
+        const { data: tokenRows, error: tokenError } = await supabase
+          .from('device_tokens')
+          .select('user_id')
+          .eq('is_active', true)
+          .in('user_id', dutyDriverIds)
+
+        // On failure leave has_push_token unset rather than marking the page
+        // unreachable — an outage in the token table is not a fleet outage.
+        if (tokenError) {
+          console.warn('Could not read device_tokens for driver list:', tokenError.message)
+        } else {
+          const tokenUserIds = new Set((tokenRows || []).map(t => t.user_id))
+          for (const d of rows) {
+            if (d.status === 'available') {
+              (d as Driver & { has_push_token?: boolean }).has_push_token = tokenUserIds.has(
+                d.user_id,
+              )
+            }
+          }
+        }
+      }
+
       return {
-        drivers: data as Driver[],
+        drivers: rows,
         count: count || 0
       }
     } catch (error) {
@@ -447,17 +480,51 @@ export class DriverService {
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('status', 'inactive'),
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('is_verified', true),
         // `available` is a duty flag the driver sets once; presence additionally
-        // requires the app to still be reporting a position. The two diverge as
-        // soon as someone force-quits, which is why the fleet can show 18
-        // "available" drivers and nobody actually reachable.
-        supabase.from('drivers').select('status, last_updated_at, current_request_id')
+        // requires that dispatch can still reach the driver. The two diverge as
+        // soon as someone signs out on another device, which is why the fleet can
+        // show 17 "available" drivers and six of them unpageable.
+        supabase.from('drivers').select('user_id, status, last_updated_at, current_request_id')
       ])
 
+      type PresenceRow = {
+        user_id: string
+        status: string
+        last_updated_at?: string
+        current_request_id?: string
+      }
+      const rows: PresenceRow[] = presenceRows.data || []
+
+      // Push reachability for the drivers who claim to be on duty. Without it
+      // `online` is the only live signal, and it comes from a foreground-only
+      // location watcher — so it reads 0 for the entire fleet as soon as drivers
+      // pocket their phones. See src/lib/driverPresence.ts.
+      const dutyDriverIds = rows.filter(d => d.status === 'available').map(d => d.user_id).filter(Boolean)
+
+      let tokenUserIds: Set<string> | null = null
+      if (dutyDriverIds.length > 0) {
+        const { data: tokenRows, error: tokenError } = await supabase
+          .from('device_tokens')
+          .select('user_id')
+          .eq('is_active', true)
+          .in('user_id', dutyDriverIds)
+
+        // Null on failure means hasPushToken stays undefined, which the
+        // derivation ignores — a lookup error must not mark everyone unreachable.
+        if (tokenError) {
+          console.warn('Could not read device_tokens for presence:', tokenError.message)
+        } else {
+          tokenUserIds = new Set((tokenRows || []).map(t => t.user_id))
+        }
+      } else {
+        tokenUserIds = new Set<string>()
+      }
+
       const presence = summarisePresence(
-        (presenceRows.data || []).map((d: { status: string; last_updated_at?: string; current_request_id?: string }) => ({
+        rows.map((d) => ({
           status: d.status,
           lastUpdatedAt: d.last_updated_at,
           currentRequestId: d.current_request_id,
+          hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : undefined,
         }))
       )
 
@@ -469,7 +536,9 @@ export class DriverService {
         inactive: inactiveResult.count || 0,
         verified: verifiedResult.count || 0,
         online: presence.online,
-        stale: presence.stale
+        stale: presence.stale,
+        dispatchable: presence.dispatchable,
+        unreachable: presence.unreachable
       }
     } catch (error) {
       console.error('Error in getDriverStats:', error)

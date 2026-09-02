@@ -91,7 +91,15 @@ describe('summarisePresence', () => {
       ],
       NOW,
     )
-    expect(counts).toEqual({ online: 2, on_trip: 1, stale: 1, offline: 1, total: 5 })
+    expect(counts).toEqual({
+      online: 2,
+      on_trip: 1,
+      stale: 1,
+      unreachable: 0,
+      offline: 1,
+      total: 5,
+      dispatchable: 4,
+    })
   })
 })
 
@@ -105,5 +113,76 @@ describe('labels', () => {
     )
     expect(silentButAvailable.presence).toBe('stale')
     expect(silentButAvailable.label).toBe('On duty')
+  })
+})
+
+// Push reachability. The location heartbeat is written only by the driver app's
+// foreground watcher, so it cannot answer "who is on duty" for a fleet that
+// keeps phones pocketed — on live the freshest heartbeat fleet-wide was 59
+// minutes old and every dashboard therefore read 0 online. These cases pin the
+// signal that does survive backgrounding.
+describe('push reachability', () => {
+  it('reports an available driver with no device token as unreachable', () => {
+    const { presence, label, dispatchable } = getDriverPresence(
+      { status: 'available', lastUpdatedAt: NOW.toISOString(), hasPushToken: false },
+      NOW,
+    )
+    expect(presence).toBe('unreachable')
+    expect(label).toBe('No app signal')
+    expect(dispatchable).toBe(false)
+  })
+
+  it('keeps a backgrounded but reachable driver on duty and dispatchable', () => {
+    const silent = new Date(NOW.getTime() - 6 * 60 * 60 * 1000).toISOString()
+    const { presence, label, dispatchable } = getDriverPresence(
+      { status: 'available', lastUpdatedAt: silent, hasPushToken: true },
+      NOW,
+    )
+    expect(presence).toBe('stale')
+    expect(label).toBe('On duty')
+    expect(dispatchable).toBe(true)
+  })
+
+  it('does not downgrade a driver when the caller never looked the token up', () => {
+    // undefined must mean "unknown", not "no token" — otherwise a call site that
+    // cannot query device_tokens would report the whole fleet unreachable.
+    const silent = new Date(NOW.getTime() - 6 * 60 * 60 * 1000).toISOString()
+    expect(getDriverPresence({ status: 'available', lastUpdatedAt: silent }, NOW).presence).toBe(
+      'stale',
+    )
+  })
+
+  it('never marks a driver holding a live SOS unreachable', () => {
+    // The driver is demonstrably working; a missing token row is a registration
+    // problem, not grounds for hiding an in-progress trip.
+    const { presence } = getDriverPresence(
+      { status: 'on_trip', currentRequestId: 'sos-1', hasPushToken: false },
+      NOW,
+    )
+    expect(presence).toBe('on_trip')
+  })
+
+  it('ignores the token for a signed-out driver', () => {
+    expect(getDriverPresence({ status: 'inactive', hasPushToken: false }, NOW).presence).toBe(
+      'offline',
+    )
+  })
+
+  it('counts dispatchable separately from live GPS', () => {
+    // The shape of the live fleet: nobody in the foreground, most reachable.
+    const silent = new Date(NOW.getTime() - 60 * 60 * 1000).toISOString()
+    const counts = summarisePresence(
+      [
+        { status: 'available', lastUpdatedAt: silent, hasPushToken: true },
+        { status: 'available', lastUpdatedAt: silent, hasPushToken: true },
+        { status: 'available', lastUpdatedAt: silent, hasPushToken: false },
+        { status: 'inactive', lastUpdatedAt: silent },
+      ],
+      NOW,
+    )
+    expect(counts.online).toBe(0)
+    expect(counts.dispatchable).toBe(2)
+    expect(counts.unreachable).toBe(1)
+    expect(counts.offline).toBe(1)
   })
 })

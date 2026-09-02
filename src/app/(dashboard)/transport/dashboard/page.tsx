@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { RoleGuard } from '@/components/auth/RoleGuard'
 import { supabase } from '@/lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,7 +31,6 @@ import {
   formatLastSeen,
   getDriverPresence,
   PRESENCE_BADGE_CLASS,
-  PRESENCE_STALE_MINUTES,
   summarisePresence,
 } from '@/lib/driverPresence'
 import Link from 'next/link'
@@ -94,8 +93,11 @@ interface TransportCompany {
 
 interface TransportDashboardStats {
   totalDrivers: number
+  dispatchableDrivers: number
   onlineDrivers: number
   staleDrivers: number
+  unreachableDrivers: number
+  unreachableDriverIds: string[]
   availableDrivers: number
   busyDrivers: number
   offlineDrivers: number
@@ -225,7 +227,14 @@ export default function TransportDashboardPage() {
     })),
   )
   const onlineDrivers = stats?.onlineDrivers ?? presenceFallback.online
-  const staleDrivers = stats?.staleDrivers ?? presenceFallback.stale
+  const dispatchableDrivers = stats?.dispatchableDrivers ?? presenceFallback.dispatchable
+  const unreachableDrivers = stats?.unreachableDrivers ?? 0
+  // Only the stats route reads device_tokens, so the client cannot re-derive
+  // reachability on its own — it badges the IDs the route reports.
+  const unreachableDriverIds = useMemo(
+    () => new Set(stats?.unreachableDriverIds ?? []),
+    [stats?.unreachableDriverIds],
+  )
   const onTripDrivers = stats?.busyDrivers || drivers.filter(d => d.status === 'on_trip' || d.status === 'assigned').length
   const activeCases = stats?.activeAssignments || sosRequests.filter(r => r.status === 'driver_assigned' || r.status === 'in_progress').length
   const completedToday = stats?.completedToday || sosRequests.filter(r => {
@@ -346,19 +355,26 @@ export default function TransportDashboardPage() {
 
           {/* "Available" is a flag the driver sets once and it survives a
               force-quit, so it answered "who declared themselves on duty", never
-              "who is reachable now". Presence adds the app's position heartbeat;
-              both are shown because dispatch cares about the difference. */}
+              "who is reachable now". This counts the drivers dispatch would
+              actually page. It deliberately does NOT lead with live GPS: that
+              heartbeat is foreground-only, so it reads 0 for every driver who has
+              pocketed their phone — which is all of them, all the time. */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Online Now</CardTitle>
+              <CardTitle className="text-sm font-medium">On Duty Now</CardTitle>
               <Wifi className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{onlineDrivers}</div>
+              <div className="text-2xl font-bold text-green-600">{dispatchableDrivers}</div>
               <p className="text-xs text-muted-foreground">
-                Live position within {PRESENCE_STALE_MINUTES} min
-                {staleDrivers > 0 ? ` · ${staleDrivers} on duty` : ''}
+                Reachable by dispatch
+                {onlineDrivers > 0 ? ` · ${onlineDrivers} sending live GPS` : ''}
               </p>
+              {unreachableDrivers > 0 && (
+                <p className="mt-1 text-xs font-medium text-red-600">
+                  {unreachableDrivers} available but unreachable
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -499,11 +515,18 @@ export default function TransportDashboardPage() {
                           status: driver.status,
                           lastUpdatedAt: driver.last_updated_at,
                           currentRequestId: driver.current_request_id,
+                          hasPushToken: unreachableDriverIds.has(driver.user_id)
+                            ? false
+                            : undefined,
                         })
                         return (
                           <Badge
                             className={PRESENCE_BADGE_CLASS[p.presence]}
-                            title={`Duty status: ${getStatusLabel(driver.status)} · last position ${formatLastSeen(p.minutesSinceHeartbeat)}`}
+                            title={
+                              p.presence === 'unreachable'
+                                ? 'Marked available, but no device is registered for push — an SOS cannot reach this driver.'
+                                : `Duty status: ${getStatusLabel(driver.status)} · last position ${formatLastSeen(p.minutesSinceHeartbeat)}`
+                            }
                           >
                             <span className="mr-1">●</span>
                             {p.label}
