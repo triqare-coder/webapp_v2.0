@@ -489,7 +489,10 @@ export default function AdminUsersPage() {
                             {getRoleDisplayName(user.role)}
                           </Badge>
                           <UserTypeBadges
-                            is_patient={!!user.is_patient}
+                            /* The role badge above already reads "Patient" for
+                               role=patient, so only surface the classification
+                               badge when it says something the role doesn't. */
+                            is_patient={!!user.is_patient && user.role !== 'patient'}
                             is_emergency_contact={!!user.is_emergency_contact}
                           />
                           {user.banned ? (

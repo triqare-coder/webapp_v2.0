@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { summarisePresence } from '@/lib/driverPresence'
+import { fetchPushReachability } from '@/lib/driverReachability'
 
 /**
  * Nullable UNIQUE columns whose blank/whitespace values MUST be stored as NULL,
@@ -216,32 +217,21 @@ export class DriverService {
       // dashboard tiles. Only the drivers claiming to be on duty matter — for
       // anyone signed out the flag is irrelevant, and leaving it undefined keeps
       // the derivation from reading anything into it.
+      //
+      // This runs on the ANON client, which cannot read device_tokens directly;
+      // the RPC is what makes the answer available at all. On failure the flag
+      // goes null ("unknown"), never silently absent — an unchecked driver used
+      // to render as a confident green "On duty".
       const rows = (data || []) as Driver[]
-      const dutyDriverIds = rows
-        .filter(d => d.status === 'available')
-        .map(d => d.user_id)
-        .filter(Boolean)
+      const reachable = await fetchPushReachability(
+        supabase,
+        rows.filter(d => d.status === 'available').map(d => d.user_id),
+      )
 
-      if (dutyDriverIds.length > 0) {
-        const { data: tokenRows, error: tokenError } = await supabase
-          .from('device_tokens')
-          .select('user_id')
-          .eq('is_active', true)
-          .in('user_id', dutyDriverIds)
-
-        // On failure leave has_push_token unset rather than marking the page
-        // unreachable — an outage in the token table is not a fleet outage.
-        if (tokenError) {
-          console.warn('Could not read device_tokens for driver list:', tokenError.message)
-        } else {
-          const tokenUserIds = new Set((tokenRows || []).map(t => t.user_id))
-          for (const d of rows) {
-            if (d.status === 'available') {
-              (d as Driver & { has_push_token?: boolean }).has_push_token = tokenUserIds.has(
-                d.user_id,
-              )
-            }
-          }
+      for (const d of rows) {
+        if (d.status === 'available') {
+          (d as Driver & { has_push_token?: boolean | null }).has_push_token =
+            reachable ? reachable.has(d.user_id) : null
         }
       }
 
@@ -498,33 +488,19 @@ export class DriverService {
       // `online` is the only live signal, and it comes from a foreground-only
       // location watcher — so it reads 0 for the entire fleet as soon as drivers
       // pocket their phones. See src/lib/driverPresence.ts.
-      const dutyDriverIds = rows.filter(d => d.status === 'available').map(d => d.user_id).filter(Boolean)
-
-      let tokenUserIds: Set<string> | null = null
-      if (dutyDriverIds.length > 0) {
-        const { data: tokenRows, error: tokenError } = await supabase
-          .from('device_tokens')
-          .select('user_id')
-          .eq('is_active', true)
-          .in('user_id', dutyDriverIds)
-
-        // Null on failure means hasPushToken stays undefined, which the
-        // derivation ignores — a lookup error must not mark everyone unreachable.
-        if (tokenError) {
-          console.warn('Could not read device_tokens for presence:', tokenError.message)
-        } else {
-          tokenUserIds = new Set((tokenRows || []).map(t => t.user_id))
-        }
-      } else {
-        tokenUserIds = new Set<string>()
-      }
+      const tokenUserIds = await fetchPushReachability(
+        supabase,
+        rows.filter(d => d.status === 'available').map(d => d.user_id),
+      )
 
       const presence = summarisePresence(
         rows.map((d) => ({
           status: d.status,
           lastUpdatedAt: d.last_updated_at,
           currentRequestId: d.current_request_id,
-          hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : undefined,
+          // null on a failed lookup, which surfaces as 'unknown' rather than
+          // padding the "On Duty Now" tile with drivers nobody has checked.
+          hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : null,
         }))
       )
 
@@ -538,7 +514,8 @@ export class DriverService {
         online: presence.online,
         stale: presence.stale,
         dispatchable: presence.dispatchable,
-        unreachable: presence.unreachable
+        unreachable: presence.unreachable,
+        unknown: presence.unknown
       }
     } catch (error) {
       console.error('Error in getDriverStats:', error)

@@ -17,7 +17,6 @@ import {
   CheckCircle,
   AlertTriangle,
   Eye,
-  Edit,
   User,
   Truck,
   Loader2,
@@ -203,13 +202,13 @@ export default function DriversPage() {
     { value: 'rotating', label: 'Rotating' }
   ]
 
-  // Navigation handlers
+  // Navigation handlers.
+  // Stays inside /erteam: hasAccessToPath() only grants an 'ert' role paths under
+  // /erteam/, so the old push to /admin/drivers/<id> put every dispatcher on the
+  // Access Denied screen. There is deliberately no edit route here — the driver
+  // PUT endpoint is requireAdmin(), so ERT could never have saved one.
   const handleViewDriver = (driverId: string) => {
-    router.push(`/admin/drivers/${driverId}`)
-  }
-
-  const handleEditDriver = (driverId: string) => {
-    router.push(`/admin/drivers/${driverId}/edit`)
+    router.push(`/erteam/drivers/${driverId}`)
   }
 
   // Helper functions for styling
@@ -632,14 +631,6 @@ export default function DriversPage() {
                         >
                           <Phone className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          title="Edit Driver"
-                          onClick={() => handleEditDriver(driver.user_id)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -733,14 +724,6 @@ export default function DriversPage() {
                               onClick={() => driver.phone && window.open(`tel:${driver.phone}`)}
                             >
                               <Phone className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Edit Driver"
-                              onClick={() => handleEditDriver(driver.user_id)}
-                            >
-                              <Edit className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>

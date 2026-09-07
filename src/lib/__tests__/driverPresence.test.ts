@@ -68,6 +68,36 @@ describe('getDriverPresence', () => {
   })
 })
 
+describe('push reachability', () => {
+  // The live bug this encodes: device_tokens is not readable by the anon client,
+  // so the lookup failed, the failure was swallowed, and every driver whose
+  // `status` was still 'available' rendered a green "On duty" — including six
+  // with no registered device at all.
+  it('distinguishes no-token, failed-lookup and never-looked-up', () => {
+    const base = { status: 'available', lastUpdatedAt: minutesAgo(999) } as const
+
+    expect(getDriverPresence({ ...base, hasPushToken: true }, NOW).presence).toBe('stale')
+    expect(getDriverPresence({ ...base, hasPushToken: false }, NOW).presence).toBe('unreachable')
+    expect(getDriverPresence({ ...base, hasPushToken: null }, NOW).presence).toBe('unknown')
+    expect(getDriverPresence({ ...base }, NOW).presence).toBe('stale')
+  })
+
+  it('does not report a driver of unknown reachability as dispatchable', () => {
+    const r = getDriverPresence(
+      { status: 'available', lastUpdatedAt: minutesAgo(1), hasPushToken: null },
+      NOW,
+    )
+    expect(r.dispatchable).toBe(false)
+    expect(r.label).toBe('Duty unknown')
+  })
+
+  it('still ranks a live assignment above an unknown lookup', () => {
+    expect(
+      getDriverPresence({ status: 'on_trip', hasPushToken: null }, NOW).presence,
+    ).toBe('on_trip')
+  })
+})
+
 describe('formatLastSeen', () => {
   it('renders the ages the driver tables show', () => {
     expect(formatLastSeen(null)).toBe('never')
@@ -96,10 +126,24 @@ describe('summarisePresence', () => {
       on_trip: 1,
       stale: 1,
       unreachable: 0,
+      unknown: 0,
       offline: 1,
       total: 5,
       dispatchable: 4,
     })
+  })
+
+  it('counts a failed reachability lookup as unknown, not as dispatchable', () => {
+    const counts = summarisePresence(
+      [
+        { status: 'available', lastUpdatedAt: minutesAgo(999), hasPushToken: null },
+        { status: 'available', lastUpdatedAt: minutesAgo(999), hasPushToken: null },
+      ],
+      NOW,
+    )
+    expect(counts.unknown).toBe(2)
+    expect(counts.stale).toBe(0)
+    expect(counts.dispatchable).toBe(0)
   })
 })
 

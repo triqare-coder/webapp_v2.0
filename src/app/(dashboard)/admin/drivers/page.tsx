@@ -277,6 +277,14 @@ export default function DriversPage() {
     }
   }
 
+  /** Age of a driver's last position report, as "3 days ago" / "never". */
+  const lastSeenLabel = (lastUpdatedAt?: string) =>
+    formatLastSeen(
+      lastUpdatedAt
+        ? Math.max(0, Math.floor((Date.now() - new Date(lastUpdatedAt).getTime()) / 60000))
+        : null,
+    )
+
   // Live presence, as opposed to `drivers.status` (the duty state below). An
   // admin asking "who is online" wants to know who dispatch can actually reach —
   // not whether someone once set themselves available and then killed the app,
@@ -293,23 +301,39 @@ export default function DriversPage() {
       currentRequestId: driver.current_request_id,
       hasPushToken: driver.has_push_token,
     })
+
+    // The age belongs ON the badge, not only in a tooltip. "On duty" is a
+    // self-declared flag that survives a force-quit, so a bare green chip reads
+    // as "working right now" when the driver may not have reported a position
+    // for weeks. "On duty · 3 days ago" cannot be misread that way.
+    const showAge = presence === 'online' || presence === 'stale' || presence === 'on_trip'
+
+    const title =
+      presence === 'unreachable'
+        ? 'Marked available, but no device is registered for push — an SOS cannot reach this driver.'
+        : presence === 'unknown'
+          ? 'Marked available, but push reachability could not be checked, so we cannot say whether dispatch would reach this driver.'
+          : `Last position: ${formatLastSeen(minutesSinceHeartbeat)}. "On duty" is the driver's own availability flag plus a registered device — it is not a live signal.`
+
     return (
-      <Badge
-        className={PRESENCE_BADGE_CLASS[presence]}
-        title={
-          presence === 'unreachable'
-            ? 'Marked available, but no device is registered for push — an SOS cannot reach this driver.'
-            : `Last position: ${formatLastSeen(minutesSinceHeartbeat)}`
-        }
-      >
+      <Badge className={PRESENCE_BADGE_CLASS[presence]} title={title}>
         <span className="mr-1">●</span>
         {label}
+        {showAge && (
+          <span className="ml-1 font-normal opacity-75">· {formatLastSeen(minutesSinceHeartbeat)}</span>
+        )}
       </Badge>
     )
   }
 
-  // Get status badge
+  // The duty status chip, shown ONLY where it adds information the presence badge
+  // does not. 'available' next to "On duty" and 'inactive' next to "Offline" are
+  // the same fact stated twice, and two chips read as two independent
+  // confirmations that the driver is working. 'assigned' vs 'on_trip' both
+  // collapse into "On trip", so there the chip still earns its place.
   const getStatusBadge = (status: string) => {
+    if (status !== 'assigned' && status !== 'on_trip') return null
+
     const statusConfig = {
       available: { color: 'bg-green-100 text-green-800', icon: ShieldCheck, label: 'Available' },
       assigned: { color: 'bg-blue-100 text-blue-800', icon: Car, label: 'Assigned' },
@@ -428,6 +452,11 @@ export default function DriversPage() {
               {stats.unreachable > 0 && (
                 <p className="mt-1 text-xs font-medium text-red-600">
                   {stats.unreachable} available but unreachable
+                </p>
+              )}
+              {stats.unknown > 0 && (
+                <p className="mt-1 text-xs font-medium text-amber-600">
+                  {stats.unknown} unchecked — reachability lookup failed
                 </p>
               )}
             </CardContent>
@@ -663,9 +692,19 @@ export default function DriversPage() {
                           <MapPin className="h-4 w-4 mr-2" />
                           {driver.city?.name || driver.state?.name || driver.country?.name || 'No location'}
                         </div>
-                        <div className="flex items-center">
+                        <div
+                          className="flex items-center"
+                          title={
+                            driver.last_updated_at
+                              ? new Date(driver.last_updated_at).toLocaleString()
+                              : 'This driver has never reported a position.'
+                          }
+                        >
                           <Clock className="h-4 w-4 mr-2" />
-                          {driver.last_updated_at ? new Date(driver.last_updated_at).toLocaleDateString() : 'Never'}
+                          {/* A bare date here reads as a created/registered date.
+                              It is the last position report, and its age is the
+                              whole point. */}
+                          Last seen {lastSeenLabel(driver.last_updated_at)}
                         </div>
                       </div>
                       {driver.latitude && driver.longitude && (

@@ -42,6 +42,8 @@ export type DriverPresence =
   | 'stale'
   /** Available but with no push token — declared on duty and NOT dispatchable. */
   | 'unreachable'
+  /** Available, but the reachability lookup failed — we do not know. */
+  | 'unknown'
   /** Signed out, went offline, or has no drivers row. */
   | 'offline'
 
@@ -63,9 +65,15 @@ export interface DriverPresenceInput {
   /**
    * Does this driver have an active row in device_tokens?
    *
-   * `undefined` means the caller did not look it up, and is NOT treated as
-   * "no token" — a caller that cannot supply it keeps the old behaviour rather
-   * than having its whole fleet reported as unreachable.
+   * Three distinct values, because "no" and "we could not check" are different
+   * answers and collapsing them is exactly how the green-badge bug happened:
+   *   true      — reachable.
+   *   false     — checked, and there is no device. 'unreachable'.
+   *   null      — the lookup was attempted and FAILED. 'unknown': the badge says
+   *               so rather than quietly promoting the driver to on duty.
+   *   undefined — the caller never looked it up (a view with no access to the
+   *               token data). Left alone, so such a caller does not report its
+   *               whole fleet as broken.
    */
   hasPushToken?: boolean | null
 }
@@ -89,6 +97,7 @@ const LABELS: Record<DriverPresence, string> = {
   on_trip: 'On trip',
   stale: 'On duty',
   unreachable: 'No app signal',
+  unknown: 'Duty unknown',
   offline: 'Offline',
 }
 
@@ -132,8 +141,11 @@ export function getDriverPresence(
   }
 
   if (status === 'available') {
-    // Explicitly false only — see hasPushToken above.
+    // See hasPushToken above for why undefined is not the same as false.
     if (hasPushToken === false) return decide('unreachable')
+    // Explicitly null = the lookup failed. Fail neutral: an operator reading
+    // "unknown" goes and checks, whereas a green "On duty" tells them not to.
+    if (hasPushToken === null) return decide('unknown')
 
     const silent =
       minutesSinceHeartbeat === null || minutesSinceHeartbeat > PRESENCE_STALE_MINUTES
@@ -160,6 +172,8 @@ export const PRESENCE_BADGE_CLASS: Record<DriverPresence, string> = {
   online: 'bg-green-100 text-green-800',
   on_trip: 'bg-blue-100 text-blue-800',
   stale: 'bg-emerald-100 text-emerald-800',
+  // Amber, not green: the honest colour for "we could not check".
+  unknown: 'bg-amber-100 text-amber-800',
   // Red, not amber: this is a driver who thinks they are on duty and will never
   // be paged. It is a fault to fix, not a quieter shade of working.
   unreachable: 'bg-red-100 text-red-800',
@@ -182,6 +196,7 @@ export function summarisePresence(
     on_trip: 0,
     stale: 0,
     unreachable: 0,
+    unknown: 0,
     offline: 0,
     total: drivers.length,
     dispatchable: 0,

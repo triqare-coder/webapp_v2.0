@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { SOS_ACTIVE_STATUSES } from '@/lib/sosStatus'
 import { getDriverPresence, summarisePresence } from '@/lib/driverPresence'
+import { fetchPushReachability } from '@/lib/driverReachability'
 
 /**
  * Admin dashboard metrics.
@@ -117,36 +118,19 @@ export async function GET(request: NextRequest) {
     // its own it cannot say whether dispatch would reach them — six of the
     // seventeen drivers claiming 'available' on live have no token at all. Only
     // the drivers who declare themselves on duty need looking up.
-    const dutyDriverIds = (driverPresenceRows || [])
-      .filter((d) => d.status === 'available')
-      .map((d) => d.user_id)
-      .filter(Boolean)
-
-    let tokenUserIds: Set<string> | null = null
-    if (dutyDriverIds.length > 0) {
-      const { data: tokenRows, error: tokenError } = await supabase
-        .from('device_tokens')
-        .select('user_id')
-        .eq('is_active', true)
-        .in('user_id', dutyDriverIds)
-
-      // A failed lookup must not turn the whole fleet red: leaving this null
-      // makes hasPushToken undefined, which the derivation ignores.
-      if (tokenError) {
-        console.warn('Could not read device_tokens for presence:', tokenError.message)
-      } else {
-        tokenUserIds = new Set((tokenRows || []).map((t) => t.user_id))
-      }
-    } else {
-      tokenUserIds = new Set<string>()
-    }
+    const tokenUserIds = await fetchPushReachability(
+      supabase,
+      (driverPresenceRows || []).filter((d) => d.status === 'available').map((d) => d.user_id),
+    )
 
     const presenceInputs = (driverPresenceRows || []).map((d) => ({
       userId: d.user_id as string,
       status: d.status,
       lastUpdatedAt: d.last_updated_at,
       currentRequestId: d.current_request_id,
-      hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : undefined,
+      // A failed lookup must not turn the whole fleet red — but it must not
+      // paint it green either: null reads as 'Duty unknown'.
+      hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : null,
     }))
 
     const driverPresence = summarisePresence(presenceInputs)
@@ -165,7 +149,7 @@ export async function GET(request: NextRequest) {
 
     const rosterUserById = Object.fromEntries((rosterUsers || []).map((u) => [u.id, u]))
 
-    const PRESENCE_RANK = { on_trip: 0, online: 1, stale: 2, unreachable: 3, offline: 4 }
+    const PRESENCE_RANK = { on_trip: 0, online: 1, stale: 2, unknown: 3, unreachable: 4, offline: 5 }
     const onDutyDrivers = presenceInputs
       .map((d) => {
         const p = getDriverPresence(d)

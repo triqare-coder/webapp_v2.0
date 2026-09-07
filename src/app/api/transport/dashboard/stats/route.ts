@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthedUser } from '@/lib/supabase/server'
 import { summarisePresence } from '@/lib/driverPresence'
+import { fetchPushReachability } from '@/lib/driverReachability'
 
 // Canonical "completed" SOS state (an SOS reaching the hospital). Legacy 'completed'
 // does not exist in the live sos_requests status enum.
@@ -72,36 +73,19 @@ export async function GET(request: NextRequest) {
     // "who is online right now" — see src/lib/driverPresence.ts. Push
     // reachability is what survives the driver pocketing the phone, so the
     // company's on-duty drivers get their device_tokens checked.
-    const dutyDriverIds = driverRows
-      .filter(d => d.status === 'available')
-      .map(d => d.user_id)
-      .filter(Boolean)
-
-    let tokenUserIds: Set<string> | null = null
-    if (dutyDriverIds.length > 0) {
-      const { data: tokenRows, error: tokenError } = await supabase
-        .from('device_tokens')
-        .select('user_id')
-        .eq('is_active', true)
-        .in('user_id', dutyDriverIds)
-
-      // Leave it null on failure: hasPushToken then goes undefined and the
-      // derivation ignores it, rather than reporting the whole fleet unreachable.
-      if (tokenError) {
-        console.warn('Could not read device_tokens for presence:', tokenError.message)
-      } else {
-        tokenUserIds = new Set((tokenRows || []).map(t => t.user_id))
-      }
-    } else {
-      tokenUserIds = new Set<string>()
-    }
+    const tokenUserIds = await fetchPushReachability(
+      supabase,
+      driverRows.filter(d => d.status === 'available').map(d => d.user_id),
+    )
 
     const presenceInputs = driverRows.map((d) => ({
       userId: d.user_id as string,
       status: d.status,
       lastUpdatedAt: d.last_updated_at,
       currentRequestId: d.current_request_id,
-      hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : undefined,
+      // null on failure = 'Duty unknown'. Neither "all reachable" nor "all
+      // unreachable" is an honest answer to a lookup that did not run.
+      hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : null,
     }))
 
     const presence = summarisePresence(presenceInputs)

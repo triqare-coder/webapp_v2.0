@@ -270,7 +270,9 @@ export default function AdminUserEditPage() {
             </Badge>
             {classification && (
               <UserTypeBadges
-                is_patient={classification.is_patient}
+                /* Role badge beside this already reads "Patient" for
+                   role=patient — don't repeat it in the header. */
+                is_patient={classification.is_patient && user.role !== 'patient'}
                 is_emergency_contact={classification.is_emergency_contact}
               />
             )}

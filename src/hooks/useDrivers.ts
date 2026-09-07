@@ -284,6 +284,8 @@ export function useDriverStats() {
     stale: number
     dispatchable: number
     unreachable: number
+    /** Available drivers whose reachability could not be checked. */
+    unknown: number
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

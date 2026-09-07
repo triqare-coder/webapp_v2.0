@@ -450,6 +450,38 @@ const CONTACT_EVENTS = new Set<SOSPushEvent>([
   'sos.no_driver',
 ])
 
+/**
+ * Names that identify nobody. Kept in step with the mobile app's
+ * `isPlaceholderPatientName` (Triqare-app/services/sos-service.ts) — both exist
+ * because a truthy 'Unknown' defeats every `patient_name || fallback` in the code.
+ */
+const PLACEHOLDER_PATIENT_NAMES = new Set([
+  'unknown',
+  'unknown user',
+  'unknown patient',
+  'user',
+  'patient',
+  'n/a',
+  'na',
+  '-',
+  '\u2014',
+])
+
+export function isPlaceholderPatientName(name?: string | null): boolean {
+  const trimmed = (name ?? '').trim()
+  return trimmed.length === 0 || PLACEHOLDER_PATIENT_NAMES.has(trimmed.toLowerCase())
+}
+
+export function assembleUserName(
+  row: { full_name?: string | null; first_name?: string | null; last_name?: string | null } | null
+): string | null {
+  if (!row) return null
+  const full = (row.full_name ?? '').trim()
+  if (full.length > 0 && !isPlaceholderPatientName(full)) return full
+  const assembled = `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim()
+  return assembled.length > 0 && !isPlaceholderPatientName(assembled) ? assembled : null
+}
+
 function buildPayload(event: SOSPushEvent, row: SOSRow): PushPayload {
   const patient = row.patient_name?.trim() || 'A patient'
   const driver = row.driver_name?.trim() || 'Your driver'
@@ -765,6 +797,25 @@ export async function dispatchSOSPush(t: SOSTransition): Promise<DispatchResult>
 
   const event = classify(row, t)
   if (!event) return empty
+
+  // `patient_name` is a snapshot taken when the request was inserted, and for a
+  // while the app wrote the literal 'Unknown' for patients whose profile HAS a
+  // name (it read a users-row copy resolved before onboarding saved it). That
+  // string is what a driver's ringing phone showed, so treat it as absent and
+  // read the live users row instead.
+  if (isPlaceholderPatientName(row.patient_name) && row.patient_id) {
+    const { data: patientUser } = await supabase
+      .from('users')
+      .select('full_name, first_name, last_name')
+      .eq('id', row.patient_id)
+      .maybeSingle<{
+        full_name: string | null
+        first_name: string | null
+        last_name: string | null
+      }>()
+    const resolved = assembleUserName(patientUser)
+    if (resolved) row.patient_name = resolved
+  }
 
   // ── Freshness gate, dispatch only ──────────────────────────────────────────
   // The trigger fires through pg_net, which queues; by the time we run, the
