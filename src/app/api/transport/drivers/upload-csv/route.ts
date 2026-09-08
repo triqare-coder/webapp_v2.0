@@ -158,7 +158,9 @@ export async function POST(request: NextRequest) {
           results.failed++
           continue
         }
-        const status = rawStatus || 'available'
+        // Off duty by default — an imported driver has not gone on duty. See
+        // api/admin/drivers/provision/route.ts.
+        const status = rawStatus || 'inactive'
 
         if (seenEmails.has(email)) {
           results.errors.push(`Row ${line}: ${email} appears more than once in this file.`)
@@ -234,7 +236,6 @@ export async function POST(request: NextRequest) {
             latitude: record.latitude ? parseFloat(record.latitude) : null,
             longitude: record.longitude ? parseFloat(record.longitude) : null,
             address_line: record.address_line || null,
-            last_updated_at: new Date().toISOString(),
             ...locationIds
           }, { onConflict: 'user_id' })
 

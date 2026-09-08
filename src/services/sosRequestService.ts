@@ -38,6 +38,73 @@ export interface SOSRequestStats {
   cancelled: number     // Cancelled
 }
 
+/**
+ * Clear trip pointers left behind by a client that ended an SOS without freeing
+ * the driver.
+ *
+ * The portal's own updateStatus/unassignDriver call releaseDriver below, so this
+ * is not for them. The mobile app's cancel writes only
+ * `sos_requests.status = 'Cancelled'` — services/sos-service.ts never touches the
+ * drivers table — so a patient cancelling an already-assigned SOS leaves the
+ * driver pinned to it forever. On live that pinned one driver for four days
+ * against a fleet with zero active emergencies.
+ *
+ * Deliberately narrow: it clears the stale pointer and re-mirrors is_available,
+ * and NOTHING else. In particular it does not set status='available' the way
+ * releaseDriver does — a driver who has since gone off duty must not be dragged
+ * back on duty by a cleanup job. Fixing the app's cancel path is the real fix;
+ * this keeps live honest until that build ships, and covers any future client
+ * that forgets.
+ */
+export async function clearStaleTripPointers(): Promise<{ cleared: number }> {
+  const { data: pinned, error } = await supabase
+    .from('drivers')
+    .select('user_id, status, current_request_id')
+    .not('current_request_id', 'is', null)
+
+  if (error || !pinned?.length) return { cleared: 0 }
+
+  const requestIds = Array.from(new Set(pinned.map((d) => d.current_request_id as string)))
+  const { data: requests, error: reqErr } = await supabase
+    .from('sos_requests')
+    .select('id, status')
+    .in('id', requestIds)
+
+  // Could not check: leave every pointer alone rather than risk freeing a driver
+  // who is genuinely mid-emergency.
+  if (reqErr) return { cleared: 0 }
+
+  const statusById = new Map(
+    (requests || []).map((r) => [r.id as string, r.status as string]),
+  )
+
+  let cleared = 0
+  for (const d of pinned) {
+    const requestStatus = statusById.get(d.current_request_id as string)
+    // Unknown id => the request is gone => the pointer is stale.
+    const stale = requestStatus === undefined || isTerminalStatus(requestStatus)
+    if (!stale) continue
+
+    const { error: updErr } = await supabase
+      .from('drivers')
+      .update({
+        current_request_id: null,
+        is_available: d.status === 'available',
+      })
+      .eq('user_id', d.user_id)
+      // Guarded: only if still pinned to the SAME finished request, so a driver
+      // who accepted a new job in the meantime is not clobbered.
+      .eq('current_request_id', d.current_request_id as string)
+
+    if (!updErr) cleared++
+  }
+
+  if (cleared) {
+    console.log(`🧹 clearStaleTripPointers: freed ${cleared} driver(s) pinned to a finished SOS`)
+  }
+  return { cleared }
+}
+
 /** Free a driver back to the available pool (terminal SOS or unassignment). */
 async function releaseDriver(driverUserId?: string | null) {
   if (!driverUserId) return

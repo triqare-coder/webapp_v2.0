@@ -296,12 +296,15 @@ export default function DriversPage() {
     status: string
     last_updated_at?: string
     current_request_id?: string
+    current_request_is_active?: boolean
     has_push_token?: boolean
   }) => {
     const result = getDriverPresence({
       status: driver.status,
       lastUpdatedAt: driver.last_updated_at,
       currentRequestId: driver.current_request_id,
+      // Supplied by /api/drivers: a pointer at a cancelled SOS is not a trip.
+      currentRequestIsActive: driver.current_request_is_active,
       hasPushToken: driver.has_push_token,
     })
     const { presence, label, minutesSinceHeartbeat } = result

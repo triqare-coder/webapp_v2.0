@@ -44,6 +44,8 @@ interface DriverRecord {
   user_id: string
   /** Set by /api/drivers/[id]: has an active device_tokens row. */
   has_push_token?: boolean | null
+  /** Set by /api/drivers/[id]: the linked SOS is still live (not cancelled). */
+  current_request_is_active?: boolean
   license_number?: string | null
   aadhar_number?: string | null
   is_verified?: boolean
@@ -174,8 +176,10 @@ export default function ERTDriverDetailPage({
     status: driver.status,
     lastUpdatedAt: driver.last_updated_at,
     currentRequestId: driver.current_request_id,
-    // Supplied by /api/drivers/[id]; without it an unpageable driver would read
-    // as On Duty here while the list showed Needs Attention.
+    // Both supplied by /api/drivers/[id]. Without hasPushToken an unpageable
+    // driver would read On Duty here while the list said Needs Attention;
+    // without the pointer check a cancelled request would read as a live trip.
+    currentRequestIsActive: driver.current_request_is_active,
     hasPushToken: driver.has_push_token,
   })
   const { presence, label, minutesSinceHeartbeat } = presenceResult

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthedUser } from '@/lib/supabase/server'
 import { summarisePresence } from '@/lib/driverPresence'
 import { fetchPushReachability } from '@/lib/driverReachability'
+import { resolveTripPointers } from '@/lib/driverTripPointer'
 
 // Canonical "completed" SOS state (an SOS reaching the hospital). Legacy 'completed'
 // does not exist in the live sos_requests status enum.
@@ -78,11 +79,14 @@ export async function GET(request: NextRequest) {
       driverRows.filter(d => d.status === 'available').map(d => d.user_id),
     )
 
+    const tripPointers = await resolveTripPointers(supabase, driverRows)
+
     const presenceInputs = driverRows.map((d) => ({
       userId: d.user_id as string,
       status: d.status,
       lastUpdatedAt: d.last_updated_at,
       currentRequestId: d.current_request_id,
+      currentRequestIsActive: tripPointers.get(d.user_id as string),
       // null on failure = 'Needs Attention · could not check'. Neither "all
       // reachable" nor "all unreachable" is an honest answer to a lookup that
       // did not run.
@@ -202,6 +206,9 @@ export async function GET(request: NextRequest) {
       noDeviceDrivers: presence.noDevice,
       uncheckedDrivers: presence.unchecked,
       needsAttentionDriverIds,
+      staleTripDriverIds: presenceInputs
+        .filter((d) => d.currentRequestId && d.currentRequestIsActive === false)
+        .map((d) => d.userId),
       // Raw column counts, retained for the company's own bookkeeping views.
       availableDrivers: availableDrivers || 0,
       busyDrivers: busyDrivers,

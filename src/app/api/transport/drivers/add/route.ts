@@ -100,7 +100,9 @@ export async function POST(request: NextRequest) {
       // second driver with no Aadhar falsely hits "already exists".
       aadhar_number: formData.aadhar_number?.trim() || null,
       is_verified: formData.is_verified || false,
-      status: formData.status || 'available',
+      // Off duty until the driver says otherwise from the app — see the note in
+      // api/admin/drivers/provision/route.ts.
+      status: formData.status || 'inactive',
       current_request_id: null,
       latitude: formData.latitude || null,
       longitude: formData.longitude || null,

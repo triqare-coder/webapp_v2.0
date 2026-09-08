@@ -4,6 +4,8 @@ import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { SOS_ACTIVE_STATUSES } from '@/lib/sosStatus'
 import { getDriverPresence, summarisePresence, PRESENCE_RANK } from '@/lib/driverPresence'
 import { fetchPushReachability } from '@/lib/driverReachability'
+import { resolveTripPointers } from '@/lib/driverTripPointer'
+import { clearStaleTripPointers } from '@/services/sosRequestService'
 
 /**
  * Admin dashboard metrics.
@@ -123,11 +125,23 @@ export async function GET(request: NextRequest) {
       (driverPresenceRows || []).filter((d) => d.status === 'available').map((d) => d.user_id),
     )
 
+    // Free drivers still pinned to a finished SOS before counting duty: the
+    // mobile cancel path leaves the pointer set, so without this a driver reads
+    // "On Trip" indefinitely. Non-fatal — the guard below covers the display
+    // even if the write fails.
+    await clearStaleTripPointers().catch((e) =>
+      console.warn('stale trip-pointer sweep failed (non-fatal):', e)
+    )
+
+    // Verify the trip pointers before believing them — see driverTripPointer.ts.
+    const tripPointers = await resolveTripPointers(supabase, driverPresenceRows || [])
+
     const presenceInputs = (driverPresenceRows || []).map((d) => ({
       userId: d.user_id as string,
       status: d.status,
       lastUpdatedAt: d.last_updated_at,
       currentRequestId: d.current_request_id,
+      currentRequestIsActive: tripPointers.get(d.user_id as string),
       // A failed lookup must not paint the fleet green: null reads as
       // 'Needs Attention · could not check'.
       hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : null,

@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { createServerClient } from '@/lib/supabase/server'
 import { summarisePresence, type DriverPresence } from '@/lib/driverPresence'
 import { fetchPushReachability } from '@/lib/driverReachability'
+import { resolveTripPointers } from '@/lib/driverTripPointer'
 
 /**
  * Reachability needs the SERVICE-ROLE client: device_tokens is server-only by
@@ -286,11 +287,20 @@ export class DriverService {
         rows.filter(d => d.status === 'available').map(d => d.user_id),
       )
 
+      // Verify trip pointers too, so a driver pinned to a cancelled request does
+      // not render "On Trip" on the list — see src/lib/driverTripPointer.ts.
+      const tripPointers = await resolveTripPointers(supabase, rows)
+
       for (const d of rows) {
-        if (d.status === 'available') {
-          (d as Driver & { has_push_token?: boolean | null }).has_push_token =
-            reachable ? reachable.has(d.user_id) : null
+        const annotated = d as Driver & {
+          has_push_token?: boolean | null
+          current_request_is_active?: boolean
         }
+        if (d.status === 'available') {
+          annotated.has_push_token = reachable ? reachable.has(d.user_id) : null
+        }
+        const live = tripPointers.get(d.user_id)
+        if (live !== undefined) annotated.current_request_is_active = live
       }
 
       return {
@@ -368,11 +378,17 @@ export class DriverService {
       // Annotate reachability so the detail page's badge agrees with the list's.
       // Without it the detail view showed "On Duty" for a driver the list had
       // just flagged as unpageable — the same record, two answers.
-      const driver = data as Driver & { has_push_token?: boolean | null }
+      const driver = data as Driver & {
+        has_push_token?: boolean | null
+        current_request_is_active?: boolean
+      }
       if (driver.status === 'available') {
         const reachable = await fetchPushReachability(reachabilityClient(), [driver.user_id])
         driver.has_push_token = reachable ? reachable.has(driver.user_id) : null
       }
+      const tripPointers = await resolveTripPointers(supabase, [driver])
+      const live = tripPointers.get(driver.user_id)
+      if (live !== undefined) driver.current_request_is_active = live
 
       return driver
     } catch (error) {
@@ -442,12 +458,28 @@ export class DriverService {
 
   static async updateDriver(id: string, data: UpdateDriverData) {
     try {
+      const patch: Record<string, unknown> = { ...nullifyBlankUniques(data) }
+
+      // `last_updated_at` is the LOCATION heartbeat, written by the driver app's
+      // position watcher. This used to stamp it on every write, so verifying a
+      // driver or flipping their status from the portal forged a fresh "last
+      // position" for someone who had never sent one — which is how drivers who
+      // have never opened the app came to show "last seen 7 hrs ago". Row-change
+      // time is already tracked by drivers.updated_at.
+      delete patch.last_updated_at
+
+      // Keep the legacy boolean in step with the state machine. They are two
+      // spellings of one fact (see the COMMENT in
+      // migrations/99_updates/push_notifications.sql), and the portal writing
+      // only `status` is why live rows read status='available' with
+      // is_available=false — a disagreement no screen could interpret.
+      if (typeof patch.status === 'string' && patch.is_available === undefined) {
+        patch.is_available = patch.status === 'available'
+      }
+
       const { data: result, error } = await supabase
         .from('drivers')
-        .update({
-          ...nullifyBlankUniques(data),
-          last_updated_at: new Date().toISOString()
-        })
+        .update(patch)
         .eq('user_id', id)
         .select(`
           *,
@@ -559,11 +591,14 @@ export class DriverService {
         rows.filter(d => d.status === 'available').map(d => d.user_id),
       )
 
+      const tripPointers = await resolveTripPointers(supabase, rows)
+
       const presence = summarisePresence(
         rows.map((d) => ({
           status: d.status,
           lastUpdatedAt: d.last_updated_at,
           currentRequestId: d.current_request_id,
+          currentRequestIsActive: tripPointers.get(d.user_id),
           // null on a failed lookup, which surfaces as 'Needs Attention' rather
           // than padding the "On Duty Now" tile with drivers nobody has checked.
           hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : null,

@@ -104,6 +104,7 @@ interface TransportDashboardStats {
   noDeviceDrivers: number
   uncheckedDrivers: number
   needsAttentionDriverIds: string[]
+  staleTripDriverIds: string[]
   availableDrivers: number
   busyDrivers: number
   offlineDrivers: number
@@ -242,6 +243,12 @@ export default function TransportDashboardPage() {
   const needsAttentionDriverIds = useMemo(
     () => new Set(stats?.needsAttentionDriverIds ?? []),
     [stats?.needsAttentionDriverIds],
+  )
+  // Drivers still pinned to a request that is already over. Only the stats route
+  // can check that (it reads sos_requests), so the client badges what it reports.
+  const staleTripDriverIds = useMemo(
+    () => new Set(stats?.staleTripDriverIds ?? []),
+    [stats?.staleTripDriverIds],
   )
   const onTripDrivers = stats?.busyDrivers || drivers.filter(d => d.status === 'on_trip' || d.status === 'assigned').length
   const activeCases = stats?.activeAssignments || sosRequests.filter(r => r.status === 'driver_assigned' || r.status === 'in_progress').length
@@ -525,6 +532,9 @@ export default function TransportDashboardPage() {
                           status: driver.status,
                           lastUpdatedAt: driver.last_updated_at,
                           currentRequestId: driver.current_request_id,
+                          currentRequestIsActive: staleTripDriverIds.has(driver.user_id)
+                            ? false
+                            : undefined,
                           hasPushToken: needsAttentionDriverIds.has(driver.user_id)
                             ? false
                             : undefined,

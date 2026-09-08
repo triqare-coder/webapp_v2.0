@@ -40,6 +40,75 @@ describe('getDriverPresence', () => {
     expect(r.presence).toBe('on_trip')
   })
 
+  it('trusts a trip pointer when nobody checked whether the request is live', () => {
+    // undefined must keep the old behaviour. Hiding a driver who really is
+    // mid-emergency is far worse than showing a trip that has ended.
+    expect(
+      getDriverPresence({ status: 'available', currentRequestId: 'req-1' }, NOW).presence,
+    ).toBe('on_trip')
+  })
+
+  it('ignores a trip pointer once the request is known to be over', () => {
+    // The live defect: a patient cancel via PUT /api/sos/[id] wrote the SOS row
+    // and never cleared drivers.current_request_id, so one driver read "On Trip"
+    // for four days against a fleet with zero active emergencies.
+    const r = getDriverPresence(
+      {
+        status: 'available',
+        currentRequestId: 'cancelled-req',
+        currentRequestIsActive: false,
+        hasPushToken: true,
+        lastUpdatedAt: minutesAgo(999),
+      },
+      NOW,
+    )
+    expect(r.presence).toBe('on_duty')
+  })
+
+  it('still reports a stale pointer as on duty only if the driver is reachable', () => {
+    // A stale pointer must not launder an unpageable driver into cover: once the
+    // pointer is discounted, the normal reachability rules decide.
+    expect(
+      getDriverPresence(
+        {
+          status: 'available',
+          currentRequestId: 'cancelled-req',
+          currentRequestIsActive: false,
+          hasPushToken: false,
+        },
+        NOW,
+      ).presence,
+    ).toBe('needs_attention')
+
+    // And a driver who has gone off duty stays off duty.
+    expect(
+      getDriverPresence(
+        { status: 'inactive', currentRequestId: 'cancelled-req', currentRequestIsActive: false },
+        NOW,
+      ).presence,
+    ).toBe('off_duty')
+  })
+
+  it('keeps a driver on trip when the request really is live', () => {
+    expect(
+      getDriverPresence(
+        { status: 'available', currentRequestId: 'req-1', currentRequestIsActive: true },
+        NOW,
+      ).presence,
+    ).toBe('on_trip')
+  })
+
+  it('does not let a stale pointer override the driver\'s own on_trip status', () => {
+    // status='on_trip' is the driver's app asserting it. A discounted pointer
+    // must not demote that.
+    expect(
+      getDriverPresence(
+        { status: 'on_trip', currentRequestId: 'cancelled-req', currentRequestIsActive: false },
+        NOW,
+      ).presence,
+    ).toBe('on_trip')
+  })
+
   it('is off duty for an inactive driver and for a user with no drivers row', () => {
     expect(
       getDriverPresence({ status: 'inactive', lastUpdatedAt: minutesAgo(1) }, NOW).presence,

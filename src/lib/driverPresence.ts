@@ -73,6 +73,25 @@ export interface DriverPresenceInput {
   /** drivers.current_request_id — set while the driver holds a live SOS. */
   currentRequestId?: string | null
   /**
+   * Is the SOS that `currentRequestId` points at actually still live?
+   *
+   * The pointer leaks. A patient cancelling from the mobile app writes
+   * sos_requests.status = 'Cancelled' and nothing else — the app never touches
+   * the drivers table — so the assigned driver keeps `current_request_id` set
+   * forever. On live that pinned one driver to a request cancelled 4 days
+   * earlier, and because a live assignment outranks every other signal he read
+   * "On Trip" on every screen while the fleet had no active emergency at all.
+   *
+   *   true      — the linked request is live. On Trip.
+   *   false     — checked, and it is terminal (or gone). The pointer is stale:
+   *               ignore it and derive duty from the driver's own state.
+   *   undefined — the caller did not look. The pointer is TRUSTED, because
+   *               hiding a driver who really is mid-emergency is far worse than
+   *               showing a stale trip. Callers that can cheaply resolve the
+   *               request status should pass it.
+   */
+  currentRequestIsActive?: boolean
+  /**
    * Does this driver have an active row in device_tokens?
    *
    * Four distinct values, because "no" and "we could not check" are different
@@ -140,7 +159,8 @@ export function getDriverPresence(
   input: DriverPresenceInput,
   now: Date = new Date(),
 ): DriverPresenceResult {
-  const { status, lastUpdatedAt, currentRequestId, hasPushToken } = input
+  const { status, lastUpdatedAt, currentRequestId, currentRequestIsActive, hasPushToken } =
+    input
 
   const heartbeat = lastUpdatedAt ? new Date(lastUpdatedAt).getTime() : NaN
   const minutesSinceHeartbeat = Number.isFinite(heartbeat)
@@ -162,8 +182,10 @@ export function getDriverPresence(
   })
 
   // A live assignment outranks everything: the driver is demonstrably working
-  // even if the app has stopped reporting coordinates.
-  if (currentRequestId || status === 'assigned' || status === 'on_trip') {
+  // even if the app has stopped reporting coordinates. But only a LIVE one — see
+  // currentRequestIsActive for why a pointer alone is not proof of a trip.
+  const holdsLiveRequest = Boolean(currentRequestId) && currentRequestIsActive !== false
+  if (holdsLiveRequest || status === 'assigned' || status === 'on_trip') {
     return decide('on_trip')
   }
 

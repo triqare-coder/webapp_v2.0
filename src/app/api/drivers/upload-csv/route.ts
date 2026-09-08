@@ -152,7 +152,10 @@ export async function POST(request: NextRequest) {
           results.failed++
           continue
         }
-        const status = rawStatus || 'available'
+        // Default OFF duty: an imported driver has not gone on duty, and an
+        // import that silently claims cover is worse than one that claims none.
+        // An explicit status column in the CSV is still honoured.
+        const status = rawStatus || 'inactive'
 
         if (seenEmails.has(email)) {
           results.errors.push(`Row ${line}: ${email} appears more than once in this file.`)

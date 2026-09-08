@@ -54,7 +54,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const status = String(body.status ?? 'available').trim().toLowerCase()
+    // A driver the portal creates has NOT gone on duty — they may not even have
+    // installed the app yet. Defaulting this to 'available' put 6 of 18 live
+    // drivers on the dashboards as cover that could never be paged: no device
+    // token, no sign-in, is_available still false. Duty is the driver's to
+    // declare from the app; provisioning only creates the record.
+    const status = String(body.status ?? 'inactive').trim().toLowerCase()
     if (!VALID_STATUSES.includes(status as (typeof VALID_STATUSES)[number])) {
       return NextResponse.json(
         { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}`, success: false },
@@ -111,7 +116,9 @@ export async function POST(request: NextRequest) {
         state_id: body.state_id ?? null,
         city_id: body.city_id ?? null,
         pincode_id: body.pincode_id ?? null,
-        last_updated_at: new Date().toISOString(),
+        // NOT last_updated_at. That column is the location heartbeat, and
+        // stamping it at creation gave drivers who have never sent a position a
+        // convincing "last seen 7 hrs ago" on every screen.
       },
       LOCATION_FK_FIELDS
     )

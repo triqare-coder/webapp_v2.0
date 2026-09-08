@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { type EmergencyContact as ExistingEmergencyContact } from '@/services/emergencyContactService'
 import { SOSRequestService } from '@/services/sosRequestService'
-import { type SOSStatus, SOS_TERMINAL_STATUSES } from '@/lib/sosStatus'
+import { type SOSStatus, SOS_TERMINAL_STATUSES, isTerminalStatus } from '@/lib/sosStatus'
 import { formatLastSeen, getDriverPresence, type DriverPresence } from '@/lib/driverPresence'
 import { fetchPushReachabilityViaApi } from '@/lib/driverReachability'
 import { firstEmbedded } from '@/lib/postgrestEmbed'
@@ -1033,6 +1033,14 @@ export class SOSService {
         updateData.completed_at = new Date().toISOString()
       }
 
+      // Who is on this request, read BEFORE the write so a terminal status can
+      // free them afterwards.
+      const { data: before } = await supabase
+        .from('sos_requests')
+        .select('driver_id')
+        .eq('id', sosRequestId)
+        .maybeSingle()
+
       const { error } = await supabase
         .from('sos_requests')
         .update(updateData)
@@ -1041,6 +1049,30 @@ export class SOSService {
       if (error) {
         console.error('Error updating SOS request status:', error)
         return { success: false, error: error.message }
+      }
+
+      // Free the driver when the request is over. This path used to write the
+      // SOS row and nothing else, so a request cancelled through it left
+      // drivers.current_request_id pointing at it forever — and because a live
+      // assignment outranks every other duty signal, that driver read "On Trip"
+      // on every dashboard indefinitely. Observed on live: one driver pinned to
+      // a request cancelled four days earlier, with no active emergency in the
+      // system. The two sibling paths (SOSRequestService.updateStatus and the
+      // mobile app's updateSOSRequest) already do this; this one was the gap.
+      if (isTerminalStatus(status) && before?.driver_id) {
+        const { error: releaseError } = await supabase
+          .from('drivers')
+          .update({ status: 'available', is_available: true, current_request_id: null })
+          .eq('user_id', before.driver_id)
+          // Scoped to THIS request, so a stale terminal write cannot free a
+          // driver who has since accepted a different job.
+          .eq('current_request_id', sosRequestId)
+
+        if (releaseError) {
+          // Non-fatal: the SOS status is authoritative and already committed.
+          // Logged loudly because a persistent desync strands a driver.
+          console.error('Failed to release driver after terminal SOS status:', releaseError)
+        }
       }
 
       return { success: true, error: null }
@@ -1334,6 +1366,10 @@ export class SOSService {
           status: driverData?.status,
           lastUpdatedAt: driverData?.last_updated_at,
           currentRequestId: driverData?.current_request_id,
+          // busyDriverMap is built from the ACTIVE sos_requests statuses above,
+          // so it already answers "is that pointer live?" — a driver pinned to a
+          // cancelled request is absent from it and must not read as On Trip.
+          currentRequestIsActive: isAssigned,
           hasPushToken:
             driverData?.status === 'available'
               ? reachable

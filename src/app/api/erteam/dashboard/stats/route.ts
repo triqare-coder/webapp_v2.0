@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthedUser } from '@/lib/supabase/server'
-import { SOSRequestService } from '@/services/sosRequestService'
+import { SOSRequestService, clearStaleTripPointers } from '@/services/sosRequestService'
 import { summarisePresence } from '@/lib/driverPresence'
 import { fetchPushReachability } from '@/lib/driverReachability'
+import { resolveTripPointers } from '@/lib/driverTripPointer'
 
 // Canonical "completed" SOS state (an SOS reaching the hospital). The live
 // sos_requests table has no created_at/updated_at/severity/location/assigned_driver_id
@@ -26,6 +27,11 @@ export async function GET(request: NextRequest) {
     // counts reflect the no-driver timeout instead of counting dead requests. Non-fatal.
     await SOSRequestService.expireStaleRequests().catch((e) =>
       console.warn('SOS timeout sweep failed (non-fatal):', e)
+    )
+    // Free drivers still pinned to a finished SOS. The mobile cancel path does
+    // not release them, so without this a driver reads "On Trip" indefinitely.
+    await clearStaleTripPointers().catch((e) =>
+      console.warn('stale trip-pointer sweep failed (non-fatal):', e)
     )
 
     const supabase = await createClient()
@@ -54,11 +60,14 @@ export async function GET(request: NextRequest) {
       rows.filter((d) => d.status === 'available').map((d) => d.user_id as string),
     )
 
+    const tripPointers = await resolveTripPointers(supabase, rows)
+
     const driverPresence = summarisePresence(
       rows.map((d) => ({
         status: d.status,
         lastUpdatedAt: d.last_updated_at,
         currentRequestId: d.current_request_id,
+        currentRequestIsActive: tripPointers.get(d.user_id as string),
         hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id as string) : null,
       })),
     )
