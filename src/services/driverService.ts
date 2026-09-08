@@ -1,6 +1,18 @@
 import { supabase } from '@/lib/supabase'
-import { summarisePresence } from '@/lib/driverPresence'
+import { createServerClient } from '@/lib/supabase/server'
+import { summarisePresence, type DriverPresence } from '@/lib/driverPresence'
 import { fetchPushReachability } from '@/lib/driverReachability'
+
+/**
+ * Reachability needs the SERVICE-ROLE client: device_tokens is server-only by
+ * design (migrations/99_updates/push_device_tokens_lock_read.sql), and the
+ * module-level `supabase` here is the anon-key client, which is refused. This
+ * service is imported exclusively by route handlers under src/app/api/drivers —
+ * never by a client component — so reaching for the privileged client is safe.
+ * If that ever changes, this call has to move behind /api/drivers/reachability
+ * like the ER Team list did, or the service key ships to the browser.
+ */
+const reachabilityClient = () => createServerClient()
 
 /**
  * Nullable UNIQUE columns whose blank/whitespace values MUST be stored as NULL,
@@ -124,9 +136,17 @@ export interface UpdateDriverData {
   is_online?: boolean
 }
 
+/**
+ * What the driver list filters by. These are DUTY states, not `drivers.status`
+ * values: the raw column cannot tell an on-duty driver from an unpageable one
+ * (both sit on 'available'), which is the whole reason the four states exist.
+ * See src/lib/driverPresence.ts.
+ */
+export type DriverDutyFilter = DriverPresence
+
 export interface DriverFilters {
   search?: string
-  status?: 'available' | 'assigned' | 'on_trip' | 'inactive'
+  status?: DriverDutyFilter
   transport_company_id?: string
   is_verified?: boolean
   country_id?: string
@@ -170,8 +190,47 @@ export class DriverService {
         query = query.or(`license_number.ilike.%${filters.search}%,aadhar_number.ilike.%${filters.search}%`)
       }
 
-      if (filters.status) {
-        query = query.eq('status', filters.status)
+      // Duty-state filtering has to happen in the QUERY, not after the page is
+      // fetched: the list is server-paginated, so filtering the 25 rows that
+      // came back would silently drop matches from every other page.
+      //
+      // Three of the four states are pure column predicates. 'on_duty' and
+      // 'needs_attention' split the same 'available' rows by reachability, which
+      // lives in another table, so those two resolve the reachable set first and
+      // filter on the ids. That set is one query over the on-duty fleet — 17
+      // rows on live — not a per-row lookup.
+      if (filters.status === 'on_trip') {
+        query = query.or('status.in.(assigned,on_trip),current_request_id.not.is.null')
+      } else if (filters.status === 'off_duty') {
+        query = query
+          .not('status', 'in', '(available,assigned,on_trip)')
+          .is('current_request_id', null)
+      } else if (filters.status === 'on_duty' || filters.status === 'needs_attention') {
+        const { data: onDutyRows } = await supabase
+          .from('drivers')
+          .select('user_id')
+          .eq('status', 'available')
+          .is('current_request_id', null)
+        const onDutyIds = (onDutyRows || []).map((d: { user_id: string }) => d.user_id)
+        const reachableSet = await fetchPushReachability(reachabilityClient(), onDutyIds)
+
+        // A failed lookup makes every on-duty driver 'needs_attention' (reason
+        // 'unchecked'), which is exactly what the badges will say — so the
+        // filter agrees with them rather than returning an empty list.
+        const wanted =
+          reachableSet === null
+            ? filters.status === 'needs_attention'
+              ? onDutyIds
+              : []
+            : onDutyIds.filter((id) =>
+                filters.status === 'on_duty' ? reachableSet.has(id) : !reachableSet.has(id),
+              )
+
+        // PostgREST turns an empty `.in()` into a syntax error, so short-circuit
+        // on a genuinely empty match with a predicate that selects nothing.
+        query = wanted.length > 0
+          ? query.in('user_id', wanted)
+          : query.eq('user_id', '00000000-0000-0000-0000-000000000000')
       }
 
       if (filters.transport_company_id) {
@@ -218,13 +277,12 @@ export class DriverService {
       // anyone signed out the flag is irrelevant, and leaving it undefined keeps
       // the derivation from reading anything into it.
       //
-      // This runs on the ANON client, which cannot read device_tokens directly;
-      // the RPC is what makes the answer available at all. On failure the flag
-      // goes null ("unknown"), never silently absent — an unchecked driver used
-      // to render as a confident green "On duty".
+      // On failure the flag goes null ("Needs Attention · could not check"),
+      // never silently absent — an unchecked driver used to render as a
+      // confident green "On duty".
       const rows = (data || []) as Driver[]
       const reachable = await fetchPushReachability(
-        supabase,
+        reachabilityClient(),
         rows.filter(d => d.status === 'available').map(d => d.user_id),
       )
 
@@ -307,7 +365,16 @@ export class DriverService {
         throw new Error(error.message)
       }
 
-      return data as Driver
+      // Annotate reachability so the detail page's badge agrees with the list's.
+      // Without it the detail view showed "On Duty" for a driver the list had
+      // just flagged as unpageable — the same record, two answers.
+      const driver = data as Driver & { has_push_token?: boolean | null }
+      if (driver.status === 'available') {
+        const reachable = await fetchPushReachability(reachabilityClient(), [driver.user_id])
+        driver.has_push_token = reachable ? reachable.has(driver.user_id) : null
+      }
+
+      return driver
     } catch (error) {
       console.error('Error in getDriverById:', error)
       throw error
@@ -462,11 +529,10 @@ export class DriverService {
 
   static async getDriverStats() {
     try {
-      const [totalResult, availableResult, assignedResult, onTripResult, inactiveResult, verifiedResult, presenceRows] = await Promise.all([
+      const [totalResult, availableResult, assignedResult, inactiveResult, verifiedResult, presenceRows] = await Promise.all([
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }),
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('status', 'available'),
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('status', 'assigned'),
-        supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('status', 'on_trip'),
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('status', 'inactive'),
         supabase.from('drivers').select('user_id', { count: 'exact', head: true }).eq('is_verified', true),
         // `available` is a duty flag the driver sets once; presence additionally
@@ -485,11 +551,11 @@ export class DriverService {
       const rows: PresenceRow[] = presenceRows.data || []
 
       // Push reachability for the drivers who claim to be on duty. Without it
-      // `online` is the only live signal, and it comes from a foreground-only
+      // live GPS is the only signal, and it comes from a foreground-only
       // location watcher — so it reads 0 for the entire fleet as soon as drivers
       // pocket their phones. See src/lib/driverPresence.ts.
       const tokenUserIds = await fetchPushReachability(
-        supabase,
+        reachabilityClient(),
         rows.filter(d => d.status === 'available').map(d => d.user_id),
       )
 
@@ -498,24 +564,37 @@ export class DriverService {
           status: d.status,
           lastUpdatedAt: d.last_updated_at,
           currentRequestId: d.current_request_id,
-          // null on a failed lookup, which surfaces as 'unknown' rather than
-          // padding the "On Duty Now" tile with drivers nobody has checked.
+          // null on a failed lookup, which surfaces as 'Needs Attention' rather
+          // than padding the "On Duty Now" tile with drivers nobody has checked.
           hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : null,
         }))
       )
 
       return {
         total: totalResult.count || 0,
+        // Raw column counts, kept for the CSV/debug view only. `available` in
+        // particular is NOT a duty state — it is the driver's own flag, and it
+        // survives a force-quit, so 17 "available" drivers included 5 nobody
+        // could page. Screens read the four states below instead.
         available: availableResult.count || 0,
         assigned: assignedResult.count || 0,
-        on_trip: onTripResult.count || 0,
         inactive: inactiveResult.count || 0,
         verified: verifiedResult.count || 0,
-        online: presence.online,
-        stale: presence.stale,
+        // The four duty states, plus live GPS as a detail of them and the
+        // Needs Attention breakdown. See src/lib/driverPresence.ts.
+        //
+        // on_trip comes from the presence derivation, not from
+        // `status='on_trip'`: a driver holding a live SOS may still sit on
+        // 'assigned', which is why the list said "On Trip 0" while the dashboard
+        // said 1 for the same fleet.
+        on_trip: presence.on_trip,
+        on_duty: presence.on_duty,
+        needs_attention: presence.needs_attention,
+        off_duty: presence.off_duty,
         dispatchable: presence.dispatchable,
-        unreachable: presence.unreachable,
-        unknown: presence.unknown
+        live_gps: presence.liveGps,
+        no_device: presence.noDevice,
+        unchecked: presence.unchecked
       }
     } catch (error) {
       console.error('Error in getDriverStats:', error)
@@ -572,8 +651,47 @@ export class DriverService {
         query = query.or(`license_number.ilike.%${filters.search}%,aadhar_number.ilike.%${filters.search}%`)
       }
 
-      if (filters.status) {
-        query = query.eq('status', filters.status)
+      // Duty-state filtering has to happen in the QUERY, not after the page is
+      // fetched: the list is server-paginated, so filtering the 25 rows that
+      // came back would silently drop matches from every other page.
+      //
+      // Three of the four states are pure column predicates. 'on_duty' and
+      // 'needs_attention' split the same 'available' rows by reachability, which
+      // lives in another table, so those two resolve the reachable set first and
+      // filter on the ids. That set is one query over the on-duty fleet — 17
+      // rows on live — not a per-row lookup.
+      if (filters.status === 'on_trip') {
+        query = query.or('status.in.(assigned,on_trip),current_request_id.not.is.null')
+      } else if (filters.status === 'off_duty') {
+        query = query
+          .not('status', 'in', '(available,assigned,on_trip)')
+          .is('current_request_id', null)
+      } else if (filters.status === 'on_duty' || filters.status === 'needs_attention') {
+        const { data: onDutyRows } = await supabase
+          .from('drivers')
+          .select('user_id')
+          .eq('status', 'available')
+          .is('current_request_id', null)
+        const onDutyIds = (onDutyRows || []).map((d: { user_id: string }) => d.user_id)
+        const reachableSet = await fetchPushReachability(reachabilityClient(), onDutyIds)
+
+        // A failed lookup makes every on-duty driver 'needs_attention' (reason
+        // 'unchecked'), which is exactly what the badges will say — so the
+        // filter agrees with them rather than returning an empty list.
+        const wanted =
+          reachableSet === null
+            ? filters.status === 'needs_attention'
+              ? onDutyIds
+              : []
+            : onDutyIds.filter((id) =>
+                filters.status === 'on_duty' ? reachableSet.has(id) : !reachableSet.has(id),
+              )
+
+        // PostgREST turns an empty `.in()` into a syntax error, so short-circuit
+        // on a genuinely empty match with a predicate that selects nothing.
+        query = wanted.length > 0
+          ? query.in('user_id', wanted)
+          : query.eq('user_id', '00000000-0000-0000-0000-000000000000')
       }
 
       if (filters.is_verified !== undefined) {

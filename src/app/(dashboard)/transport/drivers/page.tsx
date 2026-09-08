@@ -70,15 +70,12 @@ import {
   type DriverLiveStatus,
   type DriverDashboardStats,
 } from '@/lib/transport/driverDashboard'
-import { formatLastSeen, getDriverPresence } from '@/lib/driverPresence'
+import { formatLastSeen, getDriverPresence, PRESENCE_BADGE_CLASS } from '@/lib/driverPresence'
 
-const LIVE_STATUS_STYLE: Record<DriverLiveStatus, string> = {
-  on_trip: 'bg-blue-100 text-blue-800',
-  online: 'bg-green-100 text-green-800',
-  stale: 'bg-amber-100 text-amber-800',
-  offline: 'bg-gray-100 text-gray-700',
-  unavailable: 'bg-amber-100 text-amber-800',
-}
+// Colours come from the shared map so a driver's chip is the same colour here as
+// on Admin. A local copy is how "Unavailable" ended up amber on this screen and
+// grey on every other one.
+const LIVE_STATUS_STYLE: Record<DriverLiveStatus, string> = PRESENCE_BADGE_CLASS
 
 interface Driver {
   user_id: string
@@ -349,30 +346,13 @@ export default function TransportDriversPage() {
       driver.state?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       driver.pincode?.code?.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesStatus = statusFilter === 'all' || driver.status === statusFilter
-
-    return matchesSearch && matchesStatus
+    // Status is NOT re-filtered here. The duty state depends on push
+    // reachability, which only the server can read, so re-deriving it in the
+    // browser (where has_push_token is unknown) would call every on-duty driver
+    // reachable and hide exactly the rows a "Needs Attention" filter is for.
+    // fetchDrivers passes statusFilter to /api/transport/drivers instead.
+    return matchesSearch
   })
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'available': return 'bg-green-100 text-green-800'
-      case 'assigned':
-      case 'on_trip': return 'bg-blue-100 text-blue-800'
-      case 'inactive': return 'bg-gray-100 text-gray-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'available': return 'Available'
-      case 'assigned': return 'Assigned'
-      case 'on_trip': return 'On Trip'
-      case 'inactive': return 'Inactive'
-      default: return status
-    }
-  }
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -481,11 +461,11 @@ export default function TransportDriversPage() {
                   All
                 </Button>
                 <Button
-                  variant={statusFilter === 'available' ? 'default' : 'outline'}
+                  variant={statusFilter === 'on_duty' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => handleStatusFilter('available')}
+                  onClick={() => handleStatusFilter('on_duty')}
                 >
-                  Available
+                  On Duty
                 </Button>
                 <Button
                   variant={statusFilter === 'on_trip' ? 'default' : 'outline'}
@@ -495,11 +475,18 @@ export default function TransportDriversPage() {
                   On Trip
                 </Button>
                 <Button
-                  variant={statusFilter === 'inactive' ? 'default' : 'outline'}
+                  variant={statusFilter === 'needs_attention' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => handleStatusFilter('inactive')}
+                  onClick={() => handleStatusFilter('needs_attention')}
                 >
-                  Inactive
+                  Needs Attention
+                </Button>
+                <Button
+                  variant={statusFilter === 'off_duty' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleStatusFilter('off_duty')}
+                >
+                  Off Duty
                 </Button>
               </div>
             </div>

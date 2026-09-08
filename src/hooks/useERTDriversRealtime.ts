@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { RealtimeChannel } from '@supabase/supabase-js'
 import { SOSService } from '@/services/sosService'
 import { ERTDriverWithStatus, ERTDriverFilters, ERTDriverStats } from '@/hooks/useERTDrivers'
+import type { DriverPresence } from '@/lib/driverPresence'
 
 export interface UseERTDriversRealtimeOptions {
   enabled?: boolean
@@ -215,21 +216,22 @@ export function useERTDriversRealtime(options: UseERTDriversRealtimeOptions = {}
     })
   }, [drivers, filters])
 
-  // Calculate statistics
+  // Calculate statistics. Same four duty states as every other screen — see
+  // src/lib/driverPresence.ts.
   const stats = useMemo((): ERTDriverStats => {
-    const total = drivers.length
-    const online = drivers.filter(d => d.status === 'online').length
-    const offline = drivers.filter(d => d.status === 'offline').length
-    const busy = drivers.filter(d => d.status === 'busy').length
-    const stale = drivers.filter(d => d.status === 'stale').length
+    const count = (s: DriverPresence) => drivers.filter(d => d.status === s).length
+    const on_duty = count('on_duty')
+    const on_trip = count('on_trip')
     const avgRating = 0 // Not available in current schema
 
     return {
-      total,
-      online,
-      offline,
-      busy,
-      stale,
+      total: drivers.length,
+      on_duty,
+      on_trip,
+      needs_attention: count('needs_attention'),
+      off_duty: count('off_duty'),
+      dispatchable: on_duty + on_trip,
+      live_gps: drivers.filter(d => d.has_live_gps && d.status !== 'off_duty').length,
       avgRating
     }
   }, [drivers])

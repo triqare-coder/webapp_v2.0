@@ -12,6 +12,7 @@ import { toast } from 'sonner'
 
 import {
   Activity,
+  AlertTriangle,
   Plus,
   Search,
   UserCheck,
@@ -36,6 +37,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useDrivers, useDeleteDriver, useDriverStats } from '@/hooks/useDrivers'
+import type { DriverDutyFilter } from '@/services/driverService'
 import { useDriversRealtime } from '@/hooks/useDriversRealtime'
 import { useTransportCompanies } from '@/hooks/useTransportCompanies'
 import { useCountries, useStates, useCities } from '@/hooks/useLocations'
@@ -43,6 +45,7 @@ import { useServerPagination } from '@/hooks/useServerPagination'
 import { PaginationWithInfo } from '@/components/ui/pagination'
 import { uploadCsvInChunks } from '@/lib/csv/uploadCsvInChunks'
 import {
+  describePresence,
   formatLastSeen,
   getDriverPresence,
   PRESENCE_BADGE_CLASS,
@@ -86,7 +89,7 @@ export default function DriversPage() {
   // Data hooks
   const filters = useMemo(() => ({
     search: searchQuery || undefined,
-    status: (statusFilter && statusFilter !== '') ? statusFilter as 'available' | 'assigned' | 'on_trip' | 'inactive' : undefined,
+    status: (statusFilter && statusFilter !== '') ? statusFilter as DriverDutyFilter : undefined,
     transport_company_id: companyFilter || undefined,
     is_verified: verificationFilter ? verificationFilter === 'true' : undefined,
     country_id: countryFilter || undefined,
@@ -295,28 +298,22 @@ export default function DriversPage() {
     current_request_id?: string
     has_push_token?: boolean
   }) => {
-    const { presence, label, minutesSinceHeartbeat } = getDriverPresence({
+    const result = getDriverPresence({
       status: driver.status,
       lastUpdatedAt: driver.last_updated_at,
       currentRequestId: driver.current_request_id,
       hasPushToken: driver.has_push_token,
     })
+    const { presence, label, minutesSinceHeartbeat } = result
 
-    // The age belongs ON the badge, not only in a tooltip. "On duty" is a
-    // self-declared flag that survives a force-quit, so a bare green chip reads
-    // as "working right now" when the driver may not have reported a position
-    // for weeks. "On duty · 3 days ago" cannot be misread that way.
-    const showAge = presence === 'online' || presence === 'stale' || presence === 'on_trip'
-
-    const title =
-      presence === 'unreachable'
-        ? 'Marked available, but no device is registered for push — an SOS cannot reach this driver.'
-        : presence === 'unknown'
-          ? 'Marked available, but push reachability could not be checked, so we cannot say whether dispatch would reach this driver.'
-          : `Last position: ${formatLastSeen(minutesSinceHeartbeat)}. "On duty" is the driver's own availability flag plus a registered device — it is not a live signal.`
+    // The age belongs ON the badge, not only in a tooltip. "On Duty" is a
+    // self-declared flag plus a registered device, so a bare green chip reads as
+    // "working right now" when the driver may not have reported a position for
+    // weeks. "On Duty · 3 days ago" cannot be misread that way.
+    const showAge = presence === 'on_duty' || presence === 'on_trip'
 
     return (
-      <Badge className={PRESENCE_BADGE_CLASS[presence]} title={title}>
+      <Badge className={PRESENCE_BADGE_CLASS[presence]} title={describePresence(result)}>
         <span className="mr-1">●</span>
         {label}
         {showAge && (
@@ -326,11 +323,11 @@ export default function DriversPage() {
     )
   }
 
-  // The duty status chip, shown ONLY where it adds information the presence badge
-  // does not. 'available' next to "On duty" and 'inactive' next to "Offline" are
-  // the same fact stated twice, and two chips read as two independent
+  // The raw duty status chip, shown ONLY where it adds information the presence
+  // badge does not. 'available' next to "On Duty" and 'inactive' next to "Off
+  // Duty" are the same fact stated twice, and two chips read as two independent
   // confirmations that the driver is working. 'assigned' vs 'on_trip' both
-  // collapse into "On trip", so there the chip still earns its place.
+  // collapse into "On Trip", so there the chip still earns its place.
   const getStatusBadge = (status: string) => {
     if (status !== 'assigned' && status !== 'on_trip') return null
 
@@ -423,7 +420,7 @@ export default function DriversPage() {
 
       {/* Stats Cards */}
       {!statsLoading && stats && (
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Drivers</CardTitle>
@@ -431,70 +428,67 @@ export default function DriversPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.total}</div>
+              <p className="text-xs text-muted-foreground">{stats.verified} verified</p>
             </CardContent>
           </Card>
-          {/* On duty is not the same as Available: "Available" is a flag the
-              driver sets once and it survives a sign-out elsewhere, so this
-              additionally requires a registered device for dispatch to push to.
-              It deliberately does not lead with live GPS — that heartbeat is
-              foreground-only and reads 0 for a fleet with the app pocketed. */}
+          {/* The four duty states, in the order operations reads them: what
+              cover do I have, who is busy, who must I chase, who is off.
+              "Available" is deliberately NOT a tile — it is the driver's own
+              flag, it survives a force-quit, and showing it next to On Duty
+              invited the two to be read as confirming each other when they
+              disagreed by five drivers. Verified moved into the Total tile
+              above: it is paperwork, not availability, and it has no business
+              in a row of duty numbers. See src/lib/driverPresence.ts. */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">On Duty Now</CardTitle>
+              <CardTitle className="text-sm font-medium">On Duty</CardTitle>
               <Activity className="h-4 w-4 text-emerald-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-emerald-600">{stats.dispatchable}</div>
               <p className="text-xs text-muted-foreground">
                 Reachable by dispatch
-                {stats.online > 0 ? ` · ${stats.online} sending live GPS` : ''}
+                {stats.live_gps > 0 ? ` · ${stats.live_gps} sending live GPS` : ''}
               </p>
-              {stats.unreachable > 0 && (
-                <p className="mt-1 text-xs font-medium text-red-600">
-                  {stats.unreachable} available but unreachable
-                </p>
-              )}
-              {stats.unknown > 0 && (
-                <p className="mt-1 text-xs font-medium text-amber-600">
-                  {stats.unknown} unchecked — reachability lookup failed
-                </p>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Available</CardTitle>
-              <ShieldCheck className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.available}</div>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">On Trip</CardTitle>
-              <Navigation className="h-4 w-4 text-purple-600" />
+              <Navigation className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-purple-600">{stats.on_trip}</div>
+              <div className="text-2xl font-bold text-blue-600">{stats.on_trip}</div>
+              <p className="text-xs text-muted-foreground">Holding a live emergency</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Assigned</CardTitle>
-              <Car className="h-4 w-4 text-blue-600" />
+              <CardTitle className="text-sm font-medium">Needs Attention</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{stats.assigned}</div>
+              <div className="text-2xl font-bold text-red-600">{stats.needs_attention}</div>
+              <p className="text-xs text-muted-foreground">
+                {stats.needs_attention === 0
+                  ? 'Everyone on duty is reachable'
+                  : [
+                      stats.no_device > 0 ? `${stats.no_device} with no device` : '',
+                      stats.unchecked > 0 ? `${stats.unchecked} unchecked` : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+              </p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Verified</CardTitle>
-              <Shield className="h-4 w-4 text-green-600" />
+              <CardTitle className="text-sm font-medium">Off Duty</CardTitle>
+              <Clock className="h-4 w-4 text-gray-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.verified}</div>
+              <div className="text-2xl font-bold text-gray-600">{stats.off_duty}</div>
+              <p className="text-xs text-muted-foreground">Signed out or went off duty</p>
             </CardContent>
           </Card>
         </div>
@@ -527,10 +521,10 @@ export default function DriversPage() {
             <Combobox
               options={[
                 { value: "", label: "All Status" },
-                { value: "available", label: "Available" },
-                { value: "assigned", label: "Assigned" },
+                { value: "on_duty", label: "On Duty" },
                 { value: "on_trip", label: "On Trip" },
-                { value: "inactive", label: "Inactive" }
+                { value: "needs_attention", label: "Needs Attention" },
+                { value: "off_duty", label: "Off Duty" }
               ]}
               value={statusFilter}
               onValueChange={(value) => {

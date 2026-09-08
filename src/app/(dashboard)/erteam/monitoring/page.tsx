@@ -89,15 +89,18 @@ export default function MonitoringPage() {
 
   const liveStats = [
     {
-      title: 'Drivers Online',
-      value: driverStats.online,
-      description: `Reporting within ${PRESENCE_STALE_MINUTES} min`,
+      title: 'Drivers On Duty',
+      value: driverStats.dispatchable,
+      description:
+        driverStats.live_gps > 0
+          ? `Reachable by dispatch · ${driverStats.live_gps} sending live GPS`
+          : 'Reachable by dispatch',
       icon: UserCheck,
-      color: 'text-green-600',
+      color: 'text-emerald-600',
     },
     {
       title: 'On Trip',
-      value: driverStats.busy,
+      value: driverStats.on_trip,
       description: 'Handling an emergency',
       icon: Navigation,
       color: 'text-blue-600',
@@ -134,7 +137,7 @@ export default function MonitoringPage() {
       description: 'Availability, presence and current assignment for every driver',
       icon: UserCheck,
       href: '/erteam/drivers',
-      count: `${driverStats.online} online / ${driverStats.total} total`,
+      count: `${driverStats.dispatchable} on duty / ${driverStats.total} total`,
       color: 'bg-purple-100 text-purple-800',
     },
   ]
@@ -223,27 +226,29 @@ export default function MonitoringPage() {
             Driver Presence
           </CardTitle>
           <CardDescription>
-            Presence comes from the driver app: an explicit Online/Offline toggle plus a
-            position report roughly every 15 seconds while the app is open.
+            Duty state comes from the driver app&apos;s own on/off duty toggle plus a
+            registered device for dispatch to push to. Live GPS is separate: the app
+            reports positions only while it is open, so a driver can be on duty and
+            reachable without one.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="rounded-lg border p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">{driverStats.online}</div>
-              <div className="text-sm text-gray-500">Online</div>
+              <div className="text-2xl font-bold text-emerald-600">{driverStats.on_duty}</div>
+              <div className="text-sm text-gray-500">On duty</div>
             </div>
             <div className="rounded-lg border p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">{driverStats.busy}</div>
+              <div className="text-2xl font-bold text-blue-600">{driverStats.on_trip}</div>
               <div className="text-sm text-gray-500">On trip</div>
             </div>
             <div className="rounded-lg border p-4 text-center">
-              <div className="text-2xl font-bold text-amber-600">{driverStats.stale}</div>
-              <div className="text-sm text-gray-500">On duty (no signal)</div>
+              <div className="text-2xl font-bold text-red-600">{driverStats.needs_attention}</div>
+              <div className="text-sm text-gray-500">Needs attention</div>
             </div>
             <div className="rounded-lg border p-4 text-center">
-              <div className="text-2xl font-bold text-gray-600">{driverStats.offline}</div>
-              <div className="text-sm text-gray-500">Offline</div>
+              <div className="text-2xl font-bold text-gray-600">{driverStats.off_duty}</div>
+              <div className="text-sm text-gray-500">Off duty</div>
             </div>
           </div>
         </CardContent>

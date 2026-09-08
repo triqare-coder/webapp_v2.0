@@ -1,4 +1,4 @@
-import { getDriverPresence } from '@/lib/driverPresence'
+import { getDriverPresence, PRESENCE_LABEL, type DriverPresence } from '@/lib/driverPresence'
 
 /**
  * Shared vocabulary + derivations for the transport dashboard enhancement.
@@ -13,44 +13,41 @@ export const CANCELLED_STATUSES = ['cancelled', 'Cancelled']
 /** Statuses that mean a trip is currently underway. */
 export const ACTIVE_TRIP_STATUSES = ['assigned', 'in_progress', 'En Route', 'Arrived at Scene', 'Picked Up']
 
-export type DriverLiveStatus = 'on_trip' | 'online' | 'stale' | 'offline' | 'unavailable'
+/**
+ * The transport dashboard used to carry its own five-value vocabulary here
+ * ('online' / 'stale' / 'offline' / 'unavailable' / 'on_trip'), which is how a
+ * transport company's numbers stopped reconciling with Admin's for the same
+ * fleet — 'Unavailable' and 'Offline' were two words for one state, and 'Online'
+ * meant "the app is in the foreground". It is now the shared four, so a company
+ * owner and an admin looking at the same driver read the same word.
+ */
+export type DriverLiveStatus = DriverPresence
 
-export const DRIVER_STATUS_LABEL: Record<DriverLiveStatus, string> = {
-  on_trip: 'On Trip',
-  online: 'Online',
-  stale: 'On duty',
-  offline: 'Offline',
-  unavailable: 'Unavailable',
-}
+export const DRIVER_STATUS_LABEL: Record<DriverLiveStatus, string> = PRESENCE_LABEL
 
 /**
- * Live status for one driver row:
- *   On Trip     — currently assigned to a request
- *   Unavailable — deactivated by the owner (status 'inactive')
- *   Offline     — not available, but not deactivated
- *   Online      — available AND the app is still reporting a position
- *   On Duty     — available but silent past the presence window
+ * Duty state for one driver row, from the one derivation. `is_available: false`
+ * is treated as off duty even when `status` still says 'available': it is the
+ * company owner's own deactivation switch, and it outranks the driver's flag.
  *
- * There *is* a presence signal — drivers.last_updated_at, refreshed by the
- * mobile location watcher — and this used to ignore it, so a driver who set
- * themselves available in July and then force-quit the app still read "Online"
- * six weeks later. Callers that cannot supply lastUpdatedAt keep the old
- * behaviour (available ⇒ Online) rather than being told everyone is idle.
+ * Pass `hasPushToken` where the caller can read device_tokens (server-side, via
+ * fetchPushReachability) — without it an on-duty driver with no registered
+ * device cannot be told from a reachable one, and reads as On Duty.
  */
 export function deriveDriverStatus(d: {
   status?: string | null
   is_available?: boolean | null
   current_request_id?: string | null
   last_updated_at?: string | null
+  has_push_token?: boolean | null
 }): DriverLiveStatus {
   if (d.current_request_id || d.status === 'on_trip' || d.status === 'assigned') return 'on_trip'
-  if (d.status === 'inactive') return 'unavailable'
-  if (d.is_available === false) return 'offline'
-  if (d.last_updated_at === undefined) return 'online'
-  return getDriverPresence({ status: 'available', lastUpdatedAt: d.last_updated_at }).presence ===
-    'online'
-    ? 'online'
-    : 'stale'
+  if (d.is_available === false) return 'off_duty'
+  return getDriverPresence({
+    status: d.status,
+    lastUpdatedAt: d.last_updated_at,
+    hasPushToken: d.has_push_token,
+  }).presence
 }
 
 export type TripOutcome = 'Completed' | 'Cancelled' | 'In Progress'

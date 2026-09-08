@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { DriverService } from '@/services/driverService'
+import { DriverService, type DriverDutyFilter } from '@/services/driverService'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { requireRole, STAFF_ROLES } from '@/lib/auth/requireRole'
 import { blankToNull, LOCATION_FK_FIELDS } from '@/lib/blankToNull'
+
+const DUTY_FILTERS = new Set<string>(['on_trip', 'on_duty', 'needs_attention', 'off_duty'])
 
 export async function GET(request: NextRequest) {
   const gate = await requireRole(STAFF_ROLES)
@@ -12,7 +14,12 @@ export async function GET(request: NextRequest) {
     
     const filters = {
       search: searchParams.get('search') || undefined,
-      status: searchParams.get('status') as 'available' | 'assigned' | 'on_trip' | 'inactive' || undefined,
+      // Duty states, not raw drivers.status values — see DriverFilters. An
+      // unrecognised value is dropped rather than passed through, so a stale
+      // bookmark (?status=available) lists everyone instead of nothing.
+      status: DUTY_FILTERS.has(searchParams.get('status') || '')
+        ? (searchParams.get('status') as DriverDutyFilter)
+        : undefined,
       transport_company_id: searchParams.get('transport_company_id') || undefined,
       is_verified: searchParams.get('is_verified') ? searchParams.get('is_verified') === 'true' : undefined,
       country_id: searchParams.get('country_id') || undefined,

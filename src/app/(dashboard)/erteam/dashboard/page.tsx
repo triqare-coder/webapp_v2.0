@@ -115,15 +115,18 @@ export default function ERTDashboardPage() {
       }
     })
 
-    // Available drivers (not currently assigned to active SOS)
+    // Both of these read the shared duty state, not the raw `driver_status`
+    // column: 'available' survives a force-quit and says nothing about whether
+    // an SOS push would land, so counting it as an available ambulance promised
+    // cover that did not exist. See src/lib/driverPresence.ts.
+    //
+    // Available = on duty, reachable, and not already on a case.
     const availableDrivers = drivers.filter(driver =>
-      driver.driver_status === 'available' && !activeSosDriverIds.has(driver.id)
+      driver.status === 'on_duty' && !activeSosDriverIds.has(driver.id)
     )
 
-    // On-duty drivers (available or currently on assignment)
-    const onDutyDrivers = drivers.filter(driver =>
-      driver.driver_status === 'available' || driver.driver_status === 'assigned' || driver.driver_status === 'on_trip'
-    )
+    // On duty = everyone dispatch can reach, whether or not they are mid-trip.
+    const onDutyDrivers = drivers.filter(driver => driver.dispatchable)
 
     // Completed today
     const completedToday = sosRequests.filter(sos => {
@@ -303,7 +306,7 @@ export default function ERTDashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold text-green-600">{stats.availableAmbulances}</div>
               <p className="text-xs text-muted-foreground">
-                Ready for dispatch
+                On duty, reachable and free
               </p>
             </CardContent>
           </Card>

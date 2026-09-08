@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthedUser } from '@/lib/supabase/server'
-import { DriverService } from '@/services/driverService'
+import { DriverService, type DriverDutyFilter } from '@/services/driverService'
 import { supabase } from '@/lib/supabase'
 
 // GET /api/transport/drivers - Get drivers for the current transport company user
+const DUTY_FILTERS = new Set<string>(['on_trip', 'on_duty', 'needs_attention', 'off_duty'])
+
 export async function GET(request: NextRequest) {
   try {
     // Parse query parameters first
@@ -55,7 +57,10 @@ export async function GET(request: NextRequest) {
 
     // Parse additional query parameters
     const search = searchParams.get('search') || undefined
-    const status = searchParams.get('status') as 'available' | 'assigned' | 'on_trip' | 'inactive' | undefined
+    // Duty states, not raw drivers.status values (see DriverFilters); an
+    // unrecognised value is dropped rather than passed through.
+    const statusParam = searchParams.get('status') || ''
+    const status = DUTY_FILTERS.has(statusParam) ? (statusParam as DriverDutyFilter) : undefined
     const is_verified = searchParams.get('is_verified') ? searchParams.get('is_verified') === 'true' : undefined
     const country_id = searchParams.get('country_id') || undefined
     const state_id = searchParams.get('state_id') || undefined

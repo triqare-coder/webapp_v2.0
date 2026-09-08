@@ -11,6 +11,7 @@ import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import {
   Search,
   UserCheck,
+  Navigation,
   Clock,
   MapPin,
   Phone,
@@ -38,6 +39,7 @@ import {
 import {
   useERTStatusColor,
   useERTShiftColor,
+  getERTStatusLabel,
   formatCertifications,
   calculateHoursWorked,
   getShiftTimes,
@@ -189,10 +191,10 @@ export default function DriversPage() {
   // Status and shift options
   const statusOptions: ComboboxOption[] = [
     { value: 'all', label: 'All Status' },
-    { value: 'online', label: 'Online' },
-    { value: 'busy', label: 'Busy (SOS)' },
-    { value: 'stale', label: 'On duty (no live signal)' },
-    { value: 'offline', label: 'Offline' }
+    { value: 'on_duty', label: 'On Duty' },
+    { value: 'on_trip', label: 'On Trip' },
+    { value: 'needs_attention', label: 'Needs Attention' },
+    { value: 'off_duty', label: 'Off Duty' }
   ]
 
   const shiftOptions: ComboboxOption[] = [
@@ -217,18 +219,31 @@ export default function DriversPage() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'online':
+      case 'on_duty':
         return <CheckCircle className="h-4 w-4" />
-      case 'busy':
+      case 'on_trip':
+        return <Navigation className="h-4 w-4" />
+      case 'needs_attention':
         return <AlertTriangle className="h-4 w-4" />
-      case 'stale':
-        return <Clock className="h-4 w-4" />
-      case 'offline':
+      case 'off_duty':
         return <User className="h-4 w-4" />
       default:
         return <Clock className="h-4 w-4" />
     }
   }
+
+  // The raw drivers.status chip, shown ONLY where it says something the duty
+  // badge does not. 'available' beside "On Duty" and 'inactive' beside "Off
+  // Duty" are one fact stated twice, and two chips read as two independent
+  // confirmations — which is how this row came to show "Stale" and "available"
+  // side by side. 'assigned' vs 'on_trip' both collapse into On Trip, so there
+  // the chip still earns its place.
+  const rawStatusChip = (rawStatus: string) =>
+    rawStatus === 'assigned' || rawStatus === 'on_trip' ? (
+      <Badge className={getShiftColor(rawStatus)} variant="secondary">
+        {rawStatus}
+      </Badge>
+    ) : null
 
   // Show loading state
   if (loading) {
@@ -330,16 +345,25 @@ export default function DriversPage() {
           </div>
         </div>
 
-        {/* Statistics */}
+        {/* Statistics — the four duty states, identical to Admin and Transport.
+            This row used to read "Online / Busy (SOS) / Offline / On Duty (no
+            signal)", three of which were this screen's private words for states
+            the other dashboards named differently, and one of which ("Online")
+            reads 0 for the whole fleet because the location heartbeat is
+            foreground-only. See src/lib/driverPresence.ts. */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Online</p>
-                  <p className="text-2xl font-bold text-green-600">{stats.online}</p>
+                  <p className="text-sm font-medium text-gray-600">On Duty</p>
+                  <p className="text-2xl font-bold text-emerald-600">{stats.dispatchable}</p>
+                  <p className="text-xs text-gray-500">
+                    Reachable by dispatch
+                    {stats.live_gps > 0 ? ` · ${stats.live_gps} sending live GPS` : ''}
+                  </p>
                 </div>
-                <CheckCircle className="h-8 w-8 text-green-600" />
+                <CheckCircle className="h-8 w-8 text-emerald-600" />
               </div>
             </CardContent>
           </Card>
@@ -347,8 +371,21 @@ export default function DriversPage() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Busy (SOS)</p>
-                  <p className="text-2xl font-bold text-red-600">{stats.busy}</p>
+                  <p className="text-sm font-medium text-gray-600">On Trip</p>
+                  <p className="text-2xl font-bold text-blue-600">{stats.on_trip}</p>
+                  <p className="text-xs text-gray-500">Holding a live emergency</p>
+                </div>
+                <Navigation className="h-8 w-8 text-blue-600" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Needs Attention</p>
+                  <p className="text-2xl font-bold text-red-600">{stats.needs_attention}</p>
+                  <p className="text-xs text-gray-500">On duty but unpageable</p>
                 </div>
                 <AlertTriangle className="h-8 w-8 text-red-600" />
               </div>
@@ -358,25 +395,11 @@ export default function DriversPage() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Offline</p>
-                  <p className="text-2xl font-bold text-gray-600">{stats.offline}</p>
+                  <p className="text-sm font-medium text-gray-600">Off Duty</p>
+                  <p className="text-2xl font-bold text-gray-600">{stats.off_duty}</p>
+                  <p className="text-xs text-gray-500">Signed out or went off duty</p>
                 </div>
                 <User className="h-8 w-8 text-gray-600" />
-              </div>
-            </CardContent>
-          </Card>
-          {/* Drivers who declare themselves available but whose app has stopped
-              reporting a position — still dispatchable by push, just not showing
-              a live location. The tile this replaced showed an average rating the
-              schema has never carried, so it always read 0.0. */}
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">On Duty (no signal)</p>
-                  <p className="text-2xl font-bold text-amber-600">{stats.stale}</p>
-                </div>
-                <Clock className="h-8 w-8 text-amber-600" />
               </div>
             </CardContent>
           </Card>
@@ -522,11 +545,9 @@ export default function DriversPage() {
                         <div className="flex flex-col space-y-1">
                           <Badge className={getStatusColor(driver.status)}>
                             {getStatusIcon(driver.status)}
-                            <span className="ml-1 capitalize">{driver.status}</span>
+                            <span className="ml-1">{getERTStatusLabel(driver.status)}</span>
                           </Badge>
-                          <Badge className={getShiftColor(driver.driver_status)} variant="secondary">
-                            {driver.driver_status}
-                          </Badge>
+                          {rawStatusChip(driver.driver_status)}
                         </div>
                       </div>
 
@@ -591,9 +612,9 @@ export default function DriversPage() {
                         </div>
                         <div>
                           <p className="text-lg font-semibold text-gray-900">
-                            {driver.driver_status}
+                            {driver.last_seen || 'never'}
                           </p>
-                          <p className="text-xs text-gray-500">Driver Status</p>
+                          <p className="text-xs text-gray-500">Last position</p>
                         </div>
                       </div>
 
@@ -676,11 +697,9 @@ export default function DriversPage() {
                           <div className="flex flex-col gap-1">
                             <Badge className={`${getStatusColor(driver.status)} w-fit`}>
                               {getStatusIcon(driver.status)}
-                              <span className="ml-1 capitalize">{driver.status}</span>
+                              <span className="ml-1">{getERTStatusLabel(driver.status)}</span>
                             </Badge>
-                            <Badge className={getShiftColor(driver.driver_status)} variant="secondary">
-                              {driver.driver_status}
-                            </Badge>
+                            {rawStatusChip(driver.driver_status)}
                           </div>
                         </TableCell>
                         <TableCell>

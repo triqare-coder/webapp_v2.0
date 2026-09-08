@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
 import { SOS_ACTIVE_STATUSES } from '@/lib/sosStatus'
-import { getDriverPresence, summarisePresence } from '@/lib/driverPresence'
+import { getDriverPresence, summarisePresence, PRESENCE_RANK } from '@/lib/driverPresence'
 import { fetchPushReachability } from '@/lib/driverReachability'
 
 /**
@@ -128,8 +128,8 @@ export async function GET(request: NextRequest) {
       status: d.status,
       lastUpdatedAt: d.last_updated_at,
       currentRequestId: d.current_request_id,
-      // A failed lookup must not turn the whole fleet red — but it must not
-      // paint it green either: null reads as 'Duty unknown'.
+      // A failed lookup must not paint the fleet green: null reads as
+      // 'Needs Attention · could not check'.
       hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : null,
     }))
 
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
     // a different page. Only the dispatchable and the misconfigured are listed;
     // signed-out drivers are a roster question, not a duty one.
     const rosterIds = presenceInputs
-      .filter((d) => getDriverPresence(d).presence !== 'offline')
+      .filter((d) => getDriverPresence(d).presence !== 'off_duty')
       .map((d) => d.userId)
 
     const { data: rosterUsers } = rosterIds.length > 0
@@ -149,7 +149,6 @@ export async function GET(request: NextRequest) {
 
     const rosterUserById = Object.fromEntries((rosterUsers || []).map((u) => [u.id, u]))
 
-    const PRESENCE_RANK = { on_trip: 0, online: 1, stale: 2, unknown: 3, unreachable: 4, offline: 5 }
     const onDutyDrivers = presenceInputs
       .map((d) => {
         const p = getDriverPresence(d)
@@ -160,10 +159,12 @@ export async function GET(request: NextRequest) {
           presence: p.presence,
           label: p.label,
           dispatchable: p.dispatchable,
+          hasLiveGps: p.hasLiveGps,
+          reason: p.reason,
           minutesSinceHeartbeat: p.minutesSinceHeartbeat,
         }
       })
-      .filter((d) => d.presence !== 'offline')
+      .filter((d) => d.presence !== 'off_duty')
       .sort(
         (a, b) =>
           PRESENCE_RANK[a.presence] - PRESENCE_RANK[b.presence] ||
@@ -176,16 +177,20 @@ export async function GET(request: NextRequest) {
       totalHospitals: totalHospitals || 0,
       activeEmergencies: activeEmergencies || 0,
       totalDrivers: totalDrivers || 0,
-      // The tile leads with `dispatchable`, not `online`. `online` requires a
-      // location heartbeat from a foreground-only watcher, so it reads 0 for a
-      // fleet whose drivers all have the app pocketed — a true number that
-      // answers the wrong question. See src/lib/driverPresence.ts.
+      // The tile leads with `dispatchable`, not live GPS. Live GPS comes from a
+      // foreground-only watcher, so it reads 0 for a fleet whose drivers all
+      // have the app pocketed — a true number that answers the wrong question.
+      // The four states are defined once, in src/lib/driverPresence.ts.
       driversDispatchable: driverPresence.dispatchable,
-      driversOnline: driverPresence.online,
       driversOnTrip: driverPresence.on_trip,
-      driversStale: driverPresence.stale,
-      driversUnreachable: driverPresence.unreachable,
-      driversOffline: driverPresence.offline,
+      driversOnDuty: driverPresence.on_duty,
+      driversNeedAttention: driverPresence.needs_attention,
+      driversOffDuty: driverPresence.off_duty,
+      driversLiveGps: driverPresence.liveGps,
+      // Breakdown of Needs Attention: a driver with no device is a driver to
+      // ring; a failed lookup is ours to fix. Same badge, different owner.
+      driversNoDevice: driverPresence.noDevice,
+      driversUnchecked: driverPresence.unchecked,
       onDutyDrivers,
       completedToday: completedToday || 0,
       avgResponseTime,

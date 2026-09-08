@@ -26,6 +26,7 @@ import {
   PRESENCE_BADGE_CLASS,
   PRESENCE_STALE_MINUTES,
   type DriverPresence,
+  type NeedsAttentionReason,
 } from '@/lib/driverPresence'
 
 interface OnDutyDriver {
@@ -35,6 +36,8 @@ interface OnDutyDriver {
   presence: DriverPresence
   label: string
   dispatchable: boolean
+  hasLiveGps: boolean
+  reason: NeedsAttentionReason | null
   minutesSinceHeartbeat: number | null
 }
 
@@ -45,11 +48,13 @@ interface AdminDashboardStats {
   activeEmergencies: number
   totalDrivers: number
   driversDispatchable: number
-  driversOnline: number
   driversOnTrip: number
-  driversStale: number
-  driversUnreachable: number
-  driversOffline: number
+  driversOnDuty: number
+  driversNeedAttention: number
+  driversOffDuty: number
+  driversLiveGps: number
+  driversNoDevice: number
+  driversUnchecked: number
   onDutyDrivers: OnDutyDriver[]
   completedToday: number
   avgResponseTime: string
@@ -106,10 +111,22 @@ export default function AdminDashboardPage() {
       }
 
       if (data.success) {
-        // A cached response from before the roster shipped has no onDutyDrivers;
-        // defaulting it here keeps the panel empty instead of white-screening on
-        // `.length`.
-        setStats({ ...data.stats, onDutyDrivers: data.stats.onDutyDrivers ?? [] })
+        // A cached response from before the four-state rename has no roster and
+        // none of the duty counts. Defaulting them here keeps the panel empty
+        // and the tiles at 0 instead of white-screening on `.length` or
+        // rendering "NaN on trip" until the cache turns over.
+        setStats({
+          ...data.stats,
+          onDutyDrivers: data.stats.onDutyDrivers ?? [],
+          driversDispatchable: data.stats.driversDispatchable ?? 0,
+          driversOnTrip: data.stats.driversOnTrip ?? 0,
+          driversOnDuty: data.stats.driversOnDuty ?? 0,
+          driversNeedAttention: data.stats.driversNeedAttention ?? 0,
+          driversOffDuty: data.stats.driversOffDuty ?? 0,
+          driversLiveGps: data.stats.driversLiveGps ?? 0,
+          driversNoDevice: data.stats.driversNoDevice ?? 0,
+          driversUnchecked: data.stats.driversUnchecked ?? 0,
+        })
       } else {
         throw new Error(data.error || 'Failed to fetch dashboard stats')
       }
@@ -205,13 +222,13 @@ export default function AdminDashboardPage() {
           {/* "Total Drivers" alone never answered the question operations actually
               asks — who can be dispatched right now. This tile counts the drivers
               dispatch would actually reach, NOT the ones sending live GPS: the
-              location heartbeat is foreground-only, so "online" reads 0 across the
+              location heartbeat is foreground-only, so live GPS reads 0 across the
               whole fleet the moment drivers pocket their phones. Live GPS is shown
               as a subset instead. See src/lib/driverPresence.ts. */}
           <StatCard
             label="Drivers On Duty"
             value={stats.driversDispatchable}
-            sub={`${stats.driversOnTrip} on trip · ${stats.driversOnline} sending live GPS · ${stats.totalDrivers} registered`}
+            sub={`${stats.driversOnTrip} on trip · ${stats.driversLiveGps} sending live GPS · ${stats.totalDrivers} registered`}
             icon={UserCheck}
             tint="emerald"
           />
@@ -237,17 +254,32 @@ export default function AdminDashboardPage() {
             </Button>
           </div>
 
-          {stats.driversUnreachable > 0 && (
+          {/* Needs Attention is a work queue, so it leads with the action. The
+              two reasons are split because they have different owners: a driver
+              with no registered device needs a phone call, a failed lookup needs
+              us. Collapsing them would send operators chasing our bug. */}
+          {stats.driversNeedAttention > 0 && (
             <div className="mb-4 flex items-start gap-3 rounded-2xl bg-red-50 px-4 py-3">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#cc3333]" />
-              <p className="text-sm text-[#cc3333]">
-                <span className="font-semibold">
-                  {stats.driversUnreachable} driver{stats.driversUnreachable === 1 ? '' : 's'} on
-                  duty with no app signal.
-                </span>{' '}
-                They are marked available but have no registered device, so an SOS push
-                cannot reach them. They need to sign in to the app again.
-              </p>
+              <div className="text-sm text-[#cc3333]">
+                <p className="font-semibold">
+                  {stats.driversNeedAttention} driver
+                  {stats.driversNeedAttention === 1 ? '' : 's'} need
+                  {stats.driversNeedAttention === 1 ? 's' : ''} attention.
+                </p>
+                {stats.driversNoDevice > 0 && (
+                  <p className="mt-0.5">
+                    {stats.driversNoDevice} marked on duty with no registered device — an SOS
+                    push cannot reach them. Ask them to sign in to the app again.
+                  </p>
+                )}
+                {stats.driversUnchecked > 0 && (
+                  <p className="mt-0.5">
+                    {stats.driversUnchecked} could not be checked — the reachability lookup
+                    failed, so ring them to confirm cover.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -263,6 +295,8 @@ export default function AdminDashboardPage() {
                     <p className="truncate text-xs text-slate-500">
                       {driver.phone || 'No phone on file'} · last position{' '}
                       {formatLastSeen(driver.minutesSinceHeartbeat)}
+                      {driver.reason === 'no_device' && ' · no device registered'}
+                      {driver.reason === 'unchecked' && ' · reachability unchecked'}
                     </p>
                   </div>
                   <span
@@ -275,7 +309,7 @@ export default function AdminDashboardPage() {
             </div>
           ) : (
             <p className="text-sm text-slate-400">
-              No drivers are on duty right now. {stats.totalDrivers} registered, all signed out.
+              No drivers are on duty right now. {stats.totalDrivers} registered, all off duty.
             </p>
           )}
         </div>

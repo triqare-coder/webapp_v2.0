@@ -83,8 +83,9 @@ export async function GET(request: NextRequest) {
       status: d.status,
       lastUpdatedAt: d.last_updated_at,
       currentRequestId: d.current_request_id,
-      // null on failure = 'Duty unknown'. Neither "all reachable" nor "all
-      // unreachable" is an honest answer to a lookup that did not run.
+      // null on failure = 'Needs Attention · could not check'. Neither "all
+      // reachable" nor "all unreachable" is an honest answer to a lookup that
+      // did not run.
       hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id) : null,
     }))
 
@@ -92,8 +93,10 @@ export async function GET(request: NextRequest) {
 
     // The IDs the dashboard needs to badge each driver row it renders, so the
     // client does not have to re-derive reachability without the token data.
-    const unreachableDriverIds = presenceInputs
-      .filter(d => d.hasPushToken === false && d.status === 'available')
+    // `false` and `null` are both Needs Attention on screen, so both belong
+    // here — dropping the unchecked ones would badge them green.
+    const needsAttentionDriverIds = presenceInputs
+      .filter(d => d.status === 'available' && d.hasPushToken !== true)
       .map(d => d.userId)
 
     const today = new Date()
@@ -186,14 +189,20 @@ export async function GET(request: NextRequest) {
 
     const stats = {
       totalDrivers: totalDrivers || 0,
-      // Lead with the drivers dispatch can actually reach. `onlineDrivers`
-      // requires a live GPS heartbeat from a foreground-only watcher, so it
-      // reads 0 whenever the fleet has the app pocketed — see driverPresence.ts.
+      // Lead with the drivers dispatch can actually reach. Live GPS requires a
+      // heartbeat from a foreground-only watcher, so it reads 0 whenever the
+      // fleet has the app pocketed — see driverPresence.ts. Same four states as
+      // Admin, scoped to this company, so the two reconcile.
       dispatchableDrivers: presence.dispatchable,
-      onlineDrivers: presence.online,
-      staleDrivers: presence.stale,
-      unreachableDrivers: presence.unreachable,
-      unreachableDriverIds,
+      onDutyDrivers: presence.on_duty,
+      onTripDrivers: presence.on_trip,
+      needsAttentionDrivers: presence.needs_attention,
+      offDutyDrivers: presence.off_duty,
+      liveGpsDrivers: presence.liveGps,
+      noDeviceDrivers: presence.noDevice,
+      uncheckedDrivers: presence.unchecked,
+      needsAttentionDriverIds,
+      // Raw column counts, retained for the company's own bookkeeping views.
       availableDrivers: availableDrivers || 0,
       busyDrivers: busyDrivers,
       offlineDrivers: offlineDrivers || 0,

@@ -1,57 +1,67 @@
-// Is a driver actually online right now?
+// Driver duty state — one rule, four answers, every screen.
 //
-// The portal used to answer this from `users.last_sign_in_at`, which the mobile
-// app never writes — 30 of 32 live driver accounts have it NULL, so every driver
-// resolved to "offline" on the ERT Driver Status page no matter what they were
-// doing. The signals that do exist live on `drivers` and in `device_tokens`:
+// The portal used to derive this eleven different ways. The same driver read
+// "Stale" on ER Team, "Duty unknown" on the Admin dashboard and "Available" on
+// the Admin driver list, simultaneously, because each screen re-derived duty
+// from whichever column was nearest. This file is the single derivation; a
+// screen that hand-rolls its own count is a bug, not a variation.
 //
-//   status          — owned by explicit transitions in the driver app
-//                     (Go Online → 'available', accept → 'assigned'/'on_trip',
-//                     Go Offline / sign-out → 'inactive').
-//   last_updated_at — refreshed by the FOREGROUND location watcher roughly every
-//                     15s / 25m while the driver has the app open.
-//   device_tokens   — the push token the dispatch route sends the SOS to.
+// The signals, and why no single one of them is the answer:
 //
-// None of the three works alone:
+//   drivers.status         — owned by explicit transitions in the driver app
+//                            (Go Online → 'available', accept → 'assigned' /
+//                            'on_trip', Go Offline / sign-out → 'inactive').
+//                            Over-reports on its own: a force-killed app leaves
+//                            the row on 'available' forever, and 5 of the 17
+//                            drivers currently claiming 'available' on live have
+//                            no registered device — dispatch cannot reach them.
 //
-//   status alone over-reports. A force-killed app leaves the row on 'available'
-//   forever, and six of the seventeen drivers currently claiming 'available' on
-//   live have no push token at all — dispatch cannot reach them.
+//   device_tokens          — the push row the dispatch route sends the SOS to.
+//                            Says nothing about whether the driver is on duty,
+//                            but without it "on duty" is a promise nobody can
+//                            keep. Read via fetchPushReachability().
 //
-//   the heartbeat alone under-reports, badly enough to be useless as *the*
-//   online signal. `Location.watchPositionAsync` in app/(driver)/index.tsx runs
-//   only in the foreground, so it stops the moment a driver pockets the phone —
-//   which is what a working driver does. On live the freshest heartbeat in the
-//   whole fleet was 59 minutes old, so a 10-minute window scored 0 of 26 drivers
-//   online, permanently. That is the bug behind "I can't see who is online".
+//   drivers.last_updated_at — the location heartbeat, written by
+//                            Location.watchPositionAsync in the driver app's
+//                            app/(driver)/index.tsx. FOREGROUND-ONLY, so it
+//                            stops the moment a driver pockets the phone, which
+//                            is exactly what a working driver does. The freshest
+//                            position anywhere in the fleet is routinely hours
+//                            old, so any state defined as "GPS in the last 10
+//                            minutes" reads zero across the whole fleet. That is
+//                            why live GPS is a FLAG on a duty state here
+//                            (`hasLiveGps`), never a state of its own, and never
+//                            the number a dashboard leads with.
 //
-//   the push token alone says nothing about whether the driver is on duty.
-//
-// So presence is reported as three separate facts rather than collapsed into
-// one: does the driver say they are on duty, can dispatch reach them, and is the
-// app currently sending live positions. 'online' keeps its strict meaning (live
-// GPS), but it is no longer the number the dashboards lead with, because it
-// measures "is the app in the foreground", not "can this driver take a job".
+// The test each state has to answer: *can dispatch send this driver an SOS in
+// the next 60 seconds, and if not, whose problem is it?*
 
 export type DriverPresence =
-  /** Available and the app is reporting live positions — app in the foreground. */
-  | 'online'
-  /** Holding a live SOS. */
+  /** Holding a live emergency. Not available for a new one. */
   | 'on_trip'
-  /** Available and reachable by push, but no live position (app backgrounded). */
-  | 'stale'
-  /** Available but with no push token — declared on duty and NOT dispatchable. */
-  | 'unreachable'
-  /** Available, but the reachability lookup failed — we do not know. */
-  | 'unknown'
-  /** Signed out, went offline, or has no drivers row. */
-  | 'offline'
+  /** On duty in the app AND has a live device an SOS will land on. */
+  | 'on_duty'
+  /** Believes they are on duty; dispatch cannot reach them. A work queue. */
+  | 'needs_attention'
+  /** Went off duty or signed out. Not expected to answer. */
+  | 'off_duty'
 
 /**
- * A driver marked available but silent for longer than this has no live
- * position. The heartbeat is foreground-only, so backgrounding the app is enough
- * to cross this line — which is why crossing it means "no live GPS", not "not
- * working", and never downgrades a driver below 'stale'.
+ * Why a driver needs attention. Both cases are the same colour on screen — an
+ * operator has to ring the driver either way — but they are different faults, so
+ * the wording and the diagnostic counts keep them apart.
+ */
+export type NeedsAttentionReason =
+  /** Checked: no active device_tokens row. The SOS push has nowhere to land. */
+  | 'no_device'
+  /** The reachability lookup itself failed, so we genuinely do not know. */
+  | 'unchecked'
+
+/**
+ * A driver on duty whose last position is older than this is not sending live
+ * GPS. The heartbeat is foreground-only, so backgrounding the app is enough to
+ * cross this line — which is why crossing it only clears the `hasLiveGps` flag
+ * and NEVER changes the duty state.
  */
 export const PRESENCE_STALE_MINUTES = 10
 
@@ -65,12 +75,13 @@ export interface DriverPresenceInput {
   /**
    * Does this driver have an active row in device_tokens?
    *
-   * Three distinct values, because "no" and "we could not check" are different
-   * answers and collapsing them is exactly how the green-badge bug happened:
-   *   true      — reachable.
-   *   false     — checked, and there is no device. 'unreachable'.
-   *   null      — the lookup was attempted and FAILED. 'unknown': the badge says
-   *               so rather than quietly promoting the driver to on duty.
+   * Four distinct values, because "no" and "we could not check" are different
+   * answers and collapsing them is how the green-badge bug happened:
+   *   true      — reachable. 'on_duty'.
+   *   false     — checked, and there is no device. 'needs_attention'.
+   *   null      — the lookup was attempted and FAILED. Still
+   *               'needs_attention', but with reason 'unchecked', so the screen
+   *               says we could not check rather than blaming the driver.
    *   undefined — the caller never looked it up (a view with no access to the
    *               token data). Left alone, so such a caller does not report its
    *               whole fleet as broken.
@@ -83,37 +94,46 @@ export interface DriverPresenceResult {
   label: string
   /** Minutes since the last heartbeat; null when the driver never reported one. */
   minutesSinceHeartbeat: number | null
+  /**
+   * Is the app reporting positions right now? A detail OF a duty state, not a
+   * state — see the header note on the foreground-only heartbeat.
+   */
+  hasLiveGps: boolean
   /** Would dispatch page this driver right now? */
   dispatchable: boolean
+  /** Set only for 'needs_attention'. */
+  reason: NeedsAttentionReason | null
 }
 
-// "On duty" rather than "Idle": a driver whose app is backgrounded stops sending
-// positions but is still reachable by push and still expects to be dispatched.
-// Calling that state Idle — or worse, Offline — would tell dispatch to skip
-// someone who is working. Only the driver's own Go Offline / sign-out produces
-// 'offline'; only a missing push token produces 'unreachable'.
 const LABELS: Record<DriverPresence, string> = {
-  online: 'Online',
-  on_trip: 'On trip',
-  stale: 'On duty',
-  unreachable: 'No app signal',
-  unknown: 'Duty unknown',
-  offline: 'Offline',
+  on_trip: 'On Trip',
+  on_duty: 'On Duty',
+  needs_attention: 'Needs Attention',
+  off_duty: 'Off Duty',
 }
+
+export const PRESENCE_LABEL = LABELS
 
 /**
- * The states in which dispatch will actually reach the driver. 'unreachable' is
- * deliberately excluded: that driver believes they are on duty, but the SOS push
- * has nowhere to go.
+ * The states in which dispatch will actually reach the driver. 'needs_attention'
+ * is deliberately excluded: that driver believes they are on duty, but the SOS
+ * push has nowhere to go.
  */
 const DISPATCHABLE: ReadonlySet<DriverPresence> = new Set<DriverPresence>([
-  'online',
   'on_trip',
-  'stale',
+  'on_duty',
 ])
 
 export function isDispatchable(presence: DriverPresence): boolean {
   return DISPATCHABLE.has(presence)
+}
+
+/** Worst-first, for rosters and lists: the states someone must act on lead. */
+export const PRESENCE_RANK: Record<DriverPresence, number> = {
+  needs_attention: 0,
+  on_trip: 1,
+  on_duty: 2,
+  off_duty: 3,
 }
 
 export function getDriverPresence(
@@ -126,12 +146,19 @@ export function getDriverPresence(
   const minutesSinceHeartbeat = Number.isFinite(heartbeat)
     ? Math.max(0, Math.floor((now.getTime() - heartbeat) / 60000))
     : null
+  const hasLiveGps =
+    minutesSinceHeartbeat !== null && minutesSinceHeartbeat <= PRESENCE_STALE_MINUTES
 
-  const decide = (presence: DriverPresence): DriverPresenceResult => ({
+  const decide = (
+    presence: DriverPresence,
+    reason: NeedsAttentionReason | null = null,
+  ): DriverPresenceResult => ({
     presence,
     label: LABELS[presence],
     minutesSinceHeartbeat,
+    hasLiveGps,
     dispatchable: DISPATCHABLE.has(presence),
+    reason,
   })
 
   // A live assignment outranks everything: the driver is demonstrably working
@@ -141,19 +168,39 @@ export function getDriverPresence(
   }
 
   if (status === 'available') {
-    // See hasPushToken above for why undefined is not the same as false.
-    if (hasPushToken === false) return decide('unreachable')
-    // Explicitly null = the lookup failed. Fail neutral: an operator reading
-    // "unknown" goes and checks, whereas a green "On duty" tells them not to.
-    if (hasPushToken === null) return decide('unknown')
-
-    const silent =
-      minutesSinceHeartbeat === null || minutesSinceHeartbeat > PRESENCE_STALE_MINUTES
-    return decide(silent ? 'stale' : 'online')
+    // See hasPushToken above for why these four cases are not three.
+    if (hasPushToken === false) return decide('needs_attention', 'no_device')
+    if (hasPushToken === null) return decide('needs_attention', 'unchecked')
+    return decide('on_duty')
   }
 
   // 'inactive', anything unrecognised, and users with no drivers row.
-  return decide('offline')
+  return decide('off_duty')
+}
+
+/**
+ * The operator-facing explanation for a badge. Says what to DO where there is
+ * something to do — a red chip with no next action just worries people.
+ */
+export function describePresence(result: DriverPresenceResult): string {
+  const seen = formatLastSeen(result.minutesSinceHeartbeat)
+  switch (result.presence) {
+    case 'on_trip':
+      return `Holding a live emergency. Last position: ${seen}.`
+    case 'on_duty':
+      return result.hasLiveGps
+        ? `On duty and sending live location (last position: ${seen}).`
+        : `On duty and reachable by push. No live location — the driver app only ` +
+          `reports positions while it is open, so this is normal (last position: ${seen}).`
+    case 'needs_attention':
+      return result.reason === 'no_device'
+        ? `Marked on duty, but no device is registered for push — an SOS cannot ` +
+          `reach this driver. Ask them to sign in to the app again.`
+        : `Marked on duty, but the push reachability check failed, so we cannot ` +
+          `say whether an SOS would reach this driver. Ring them to confirm.`
+    case 'off_duty':
+      return `Went off duty or signed out. Last position: ${seen}.`
+  }
 }
 
 /** "2 min ago" / "3 days ago" / "never" — the age of the last position report. */
@@ -167,23 +214,33 @@ export function formatLastSeen(minutesSinceHeartbeat: number | null): string {
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
-/** Tailwind badge classes, shared so every dashboard colours presence the same. */
+/** Tailwind badge classes, shared so every dashboard colours duty the same. */
 export const PRESENCE_BADGE_CLASS: Record<DriverPresence, string> = {
-  online: 'bg-green-100 text-green-800',
   on_trip: 'bg-blue-100 text-blue-800',
-  stale: 'bg-emerald-100 text-emerald-800',
-  // Amber, not green: the honest colour for "we could not check".
-  unknown: 'bg-amber-100 text-amber-800',
+  on_duty: 'bg-emerald-100 text-emerald-800',
   // Red, not amber: this is a driver who thinks they are on duty and will never
   // be paged. It is a fault to fix, not a quieter shade of working.
-  unreachable: 'bg-red-100 text-red-800',
-  offline: 'bg-gray-100 text-gray-700',
+  needs_attention: 'bg-red-100 text-red-800',
+  off_duty: 'bg-gray-100 text-gray-700',
+}
+
+/** Emoji dots for the compact ER Team rows. */
+export const PRESENCE_DOT: Record<DriverPresence, string> = {
+  on_trip: '🔵',
+  on_duty: '🟢',
+  needs_attention: '🔴',
+  off_duty: '⚪',
 }
 
 export interface PresenceSummary extends Record<DriverPresence, number> {
   total: number
-  /** online + on_trip + stale — the drivers dispatch can actually reach. */
+  /** on_trip + on_duty — the drivers dispatch can actually reach. */
   dispatchable: number
+  /** Subset of on_duty + on_trip whose app is reporting positions right now. */
+  liveGps: number
+  /** Breakdown of needs_attention, so a lookup outage stays diagnosable. */
+  noDevice: number
+  unchecked: number
 }
 
 /** Counts for the dashboard tiles. */
@@ -192,19 +249,25 @@ export function summarisePresence(
   now: Date = new Date(),
 ): PresenceSummary {
   const counts: PresenceSummary = {
-    online: 0,
     on_trip: 0,
-    stale: 0,
-    unreachable: 0,
-    unknown: 0,
-    offline: 0,
+    on_duty: 0,
+    needs_attention: 0,
+    off_duty: 0,
     total: drivers.length,
     dispatchable: 0,
+    liveGps: 0,
+    noDevice: 0,
+    unchecked: 0,
   }
   for (const d of drivers) {
-    const { presence } = getDriverPresence(d, now)
-    counts[presence] += 1
-    if (DISPATCHABLE.has(presence)) counts.dispatchable += 1
+    const result = getDriverPresence(d, now)
+    counts[result.presence] += 1
+    if (result.dispatchable) {
+      counts.dispatchable += 1
+      if (result.hasLiveGps) counts.liveGps += 1
+    }
+    if (result.reason === 'no_device') counts.noDevice += 1
+    if (result.reason === 'unchecked') counts.unchecked += 1
   }
   return counts
 }

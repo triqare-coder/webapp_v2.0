@@ -2,6 +2,13 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { SOSService } from '@/services/sosService'
+import {
+  PRESENCE_BADGE_CLASS,
+  PRESENCE_DOT,
+  PRESENCE_LABEL,
+  type DriverPresence,
+  type NeedsAttentionReason,
+} from '@/lib/driverPresence'
 
 export interface ERTDriverWithStatus {
   id: string
@@ -45,10 +52,14 @@ export interface ERTDriverWithStatus {
   state?: { id: string; name: string }
   city?: { id: string; name: string }
 
-  // Calculated status for ERT view. 'stale' = the driver still declares
-  // themselves available but their app has stopped reporting a position, so the
-  // dashboard must not present them as reachable. See src/lib/driverPresence.ts.
-  status: 'online' | 'offline' | 'busy' | 'stale'
+  // The shared duty state, from src/lib/driverPresence.ts. This screen used to
+  // define its own — 'online' / 'busy' / 'stale' / 'offline' — which is how the
+  // same driver read "Stale" here and "Available" on the Admin list.
+  status: DriverPresence
+  presence_label?: string
+  presence_reason?: NeedsAttentionReason | null
+  has_live_gps?: boolean
+  dispatchable?: boolean
   /** Human-readable age of the last position report, e.g. "3 min ago". */
   last_seen?: string
   minutes_since_heartbeat?: number | null
@@ -62,7 +73,7 @@ export interface ERTDriverWithStatus {
 
 export interface ERTDriverFilters {
   search?: string
-  status?: 'all' | 'online' | 'offline' | 'busy' | 'stale'
+  status?: 'all' | DriverPresence
   shift?: 'all' | 'day' | 'night' | 'rotating'
   country_id?: string
   state_id?: string
@@ -71,10 +82,15 @@ export interface ERTDriverFilters {
 
 export interface ERTDriverStats {
   total: number
-  online: number
-  offline: number
-  busy: number
-  stale: number
+  /** The four duty states. */
+  on_duty: number
+  on_trip: number
+  needs_attention: number
+  off_duty: number
+  /** on_duty + on_trip: what dispatch can actually reach. */
+  dispatchable: number
+  /** Subset of those sending live positions — a detail, never the headline. */
+  live_gps: number
   avgRating: number
 }
 
@@ -157,10 +173,9 @@ export function useERTDrivers(filters: ERTDriverFilters = {}) {
   // Calculate statistics
   const stats = useMemo((): ERTDriverStats => {
     const total = drivers.length
-    const online = drivers.filter(d => d.status === 'online').length
-    const offline = drivers.filter(d => d.status === 'offline').length
-    const busy = drivers.filter(d => d.status === 'busy').length
-    const stale = drivers.filter(d => d.status === 'stale').length
+    const count = (s: DriverPresence) => drivers.filter(d => d.status === s).length
+    const on_duty = count('on_duty')
+    const on_trip = count('on_trip')
 
     // For now, we'll set avgRating to 0 since rating info isn't in drivers table
     // This could be enhanced later by joining with additional rating data
@@ -168,10 +183,12 @@ export function useERTDrivers(filters: ERTDriverFilters = {}) {
 
     return {
       total,
-      online,
-      offline,
-      busy,
-      stale,
+      on_duty,
+      on_trip,
+      needs_attention: count('needs_attention'),
+      off_duty: count('off_duty'),
+      dispatchable: on_duty + on_trip,
+      live_gps: drivers.filter(d => d.has_live_gps && d.status !== 'off_duty').length,
       avgRating
     }
   }, [drivers])
@@ -186,20 +203,12 @@ export function useERTDrivers(filters: ERTDriverFilters = {}) {
   }
 }
 
-// Helper hooks for styling
+// Styling comes from the shared maps so a driver's chip is the same colour on
+// every screen. The local copies here had 'busy' red and 'stale' amber, so the
+// ER Team list coloured a working driver as an alarm and an unpageable one as a
+// mild warning — the exact inversion of what an operator needs to see.
 export function useERTStatusColor(status: string) {
-  switch (status) {
-    case 'online':
-      return 'bg-green-100 text-green-800'
-    case 'busy':
-      return 'bg-red-100 text-red-800'
-    case 'stale':
-      return 'bg-amber-100 text-amber-800'
-    case 'offline':
-      return 'bg-gray-100 text-gray-800'
-    default:
-      return 'bg-gray-100 text-gray-800'
-  }
+  return PRESENCE_BADGE_CLASS[status as DriverPresence] ?? 'bg-gray-100 text-gray-800'
 }
 
 export function useERTShiftColor(shift: string) {
@@ -217,18 +226,12 @@ export function useERTShiftColor(shift: string) {
 
 // Helper function to get status icon
 export function getERTStatusIcon(status: string) {
-  switch (status) {
-    case 'online':
-      return '🟢'
-    case 'busy':
-      return '🔴'
-    case 'stale':
-      return '🟠'
-    case 'offline':
-      return '⚫'
-    default:
-      return '⚫'
-  }
+  return PRESENCE_DOT[status as DriverPresence] ?? '⚪'
+}
+
+/** The label for a duty state, e.g. 'needs_attention' -> "Needs Attention". */
+export function getERTStatusLabel(status: string) {
+  return PRESENCE_LABEL[status as DriverPresence] ?? status
 }
 
 // Helper function to format certifications (not available in drivers table)

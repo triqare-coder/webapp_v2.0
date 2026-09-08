@@ -275,17 +275,23 @@ export function useUpdateDriverLocation() {
 export function useDriverStats() {
   const [stats, setStats] = useState<{
     total: number
+    /** Raw drivers.status counts. NOT duty states — see driverPresence.ts. */
     available: number
     assigned: number
-    on_trip: number
     inactive: number
     verified: number
-    online: number
-    stale: number
+    /** The four duty states. */
+    on_trip: number
+    on_duty: number
+    needs_attention: number
+    off_duty: number
+    /** on_trip + on_duty. */
     dispatchable: number
-    unreachable: number
-    /** Available drivers whose reachability could not be checked. */
-    unknown: number
+    /** Subset of the dispatchable whose app is reporting positions right now. */
+    live_gps: number
+    /** Needs Attention, split by owner: the driver's phone, or our lookup. */
+    no_device: number
+    unchecked: number
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

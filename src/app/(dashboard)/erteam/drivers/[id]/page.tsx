@@ -33,6 +33,7 @@ import {
   UserCheck,
 } from 'lucide-react'
 import {
+  describePresence,
   formatLastSeen,
   getDriverPresence,
   PRESENCE_BADGE_CLASS,
@@ -41,6 +42,8 @@ import {
 interface DriverRecord {
   id: string
   user_id: string
+  /** Set by /api/drivers/[id]: has an active device_tokens row. */
+  has_push_token?: boolean | null
   license_number?: string | null
   aadhar_number?: string | null
   is_verified?: boolean
@@ -167,11 +170,15 @@ export default function ERTDriverDetailPage({
     [driver.user?.first_name, driver.user?.last_name].filter(Boolean).join(' ') ||
     'Unknown driver'
 
-  const { presence, label, minutesSinceHeartbeat } = getDriverPresence({
+  const presenceResult = getDriverPresence({
     status: driver.status,
     lastUpdatedAt: driver.last_updated_at,
     currentRequestId: driver.current_request_id,
+    // Supplied by /api/drivers/[id]; without it an unpageable driver would read
+    // as On Duty here while the list showed Needs Attention.
+    hasPushToken: driver.has_push_token,
   })
+  const { presence, label, minutesSinceHeartbeat } = presenceResult
 
   const area = [driver.city?.name, driver.state?.name, driver.country?.name]
     .filter(Boolean)
@@ -198,7 +205,9 @@ export default function ERTDriverDetailPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge className={PRESENCE_BADGE_CLASS[presence]}>{label}</Badge>
+          <Badge className={PRESENCE_BADGE_CLASS[presence]} title={describePresence(presenceResult)}>
+            {label}
+          </Badge>
           <Badge variant="secondary">
             {driver.is_verified ? 'Verified' : 'Verification pending'}
           </Badge>

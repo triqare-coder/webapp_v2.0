@@ -2,7 +2,8 @@ import { supabase } from '@/lib/supabase'
 import { type EmergencyContact as ExistingEmergencyContact } from '@/services/emergencyContactService'
 import { SOSRequestService } from '@/services/sosRequestService'
 import { type SOSStatus, SOS_TERMINAL_STATUSES } from '@/lib/sosStatus'
-import { formatLastSeen, getDriverPresence } from '@/lib/driverPresence'
+import { formatLastSeen, getDriverPresence, type DriverPresence } from '@/lib/driverPresence'
+import { fetchPushReachabilityViaApi } from '@/lib/driverReachability'
 import { firstEmbedded } from '@/lib/postgrestEmbed'
 
 export interface SOSRequest {
@@ -1299,6 +1300,17 @@ export class SOSService {
         })
       })
 
+      // Push reachability for the drivers who claim to be on duty. This runs in
+      // the BROWSER (useERTDrivers is a client hook), and device_tokens is
+      // server-only, so it goes through our own API rather than the anon client.
+      // Without it the ER Team list could not tell an on-duty driver from an
+      // unpageable one and showed both as On Duty — the same defect the Admin
+      // list had. See src/lib/driverReachability.ts.
+      const onDutyIds = (allDrivers || [])
+        .filter((u) => firstEmbedded(u.drivers)?.status === 'available')
+        .map((u) => u.id as string)
+      const reachable = await fetchPushReachabilityViaApi(onDutyIds)
+
       // Transform drivers with status
       const driversWithStatus = allDrivers?.map(user => {
         // users -> drivers is a to-ONE relationship (drivers.user_id is the key),
@@ -1322,18 +1334,20 @@ export class SOSService {
           status: driverData?.status,
           lastUpdatedAt: driverData?.last_updated_at,
           currentRequestId: driverData?.current_request_id,
+          hasPushToken:
+            driverData?.status === 'available'
+              ? reachable
+                ? reachable.has(user.id)
+                : null
+              : undefined,
         })
 
-        // A driver holding a live SOS reads as busy even if their own row has not
-        // caught up yet.
-        const status =
-          presence.presence === 'on_trip' || isAssigned
-            ? 'busy'
-            : presence.presence === 'online'
-              ? 'online'
-              : presence.presence === 'stale'
-                ? 'stale'
-                : 'offline'
+        // The ER Team list used to carry its own words for these — 'busy',
+        // 'stale', 'online', 'offline' — which is why one driver could read
+        // "Stale" here and "Available" on the Admin list at the same moment. It
+        // now reports the shared duty state. A driver holding a live SOS reads
+        // as On Trip even if their own row has not caught up yet.
+        const status: DriverPresence = isAssigned ? 'on_trip' : presence.presence
 
         return {
           // Driver table fields (with defaults if no driver record)
@@ -1375,6 +1389,10 @@ export class SOSService {
 
           // Calculated status
           status,
+          presence_label: presence.label,
+          presence_reason: presence.reason,
+          has_live_gps: presence.hasLiveGps,
+          dispatchable: presence.dispatchable,
           last_seen: formatLastSeen(presence.minutesSinceHeartbeat),
           minutes_since_heartbeat: presence.minutesSinceHeartbeat,
           current_assignment: assignment?.current_assignment || null,

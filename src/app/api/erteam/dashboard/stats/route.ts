@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, getAuthedUser } from '@/lib/supabase/server'
 import { SOSRequestService } from '@/services/sosRequestService'
+import { summarisePresence } from '@/lib/driverPresence'
+import { fetchPushReachability } from '@/lib/driverReachability'
 
 // Canonical "completed" SOS state (an SOS reaching the hospital). The live
 // sos_requests table has no created_at/updated_at/severity/location/assigned_driver_id
@@ -34,25 +36,37 @@ export async function GET(request: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .not('status', 'in', TERMINAL_FILTER)
 
-    // Get available ambulances (mock for now - need ambulances table)
-    // For now, we'll use a calculation based on drivers.
-    const { count: totalDrivers } = await supabase
+    // Driver cover. This used to be three separate count queries with
+    // `busy = status != 'available'`, which counted the NINE signed-out drivers
+    // as busy and then subtracted them from the total to get "available
+    // ambulances" — so the tile fell as drivers went off duty and rose as they
+    // signed out. It now derives from the one shared model, the same way Admin
+    // and Transport do. See src/lib/driverPresence.ts.
+    const { data: driverRows } = await supabase
       .from('drivers')
-      .select('*', { count: 'exact', head: true })
+      .select('user_id, status, last_updated_at, current_request_id')
 
-    // Busy = any driver not 'available' (assigned / on_trip / inactive).
-    const { count: busyDrivers } = await supabase
-      .from('drivers')
-      .select('*', { count: 'exact', head: true })
-      .neq('status', 'available')
+    const rows = driverRows || []
+    const totalDrivers = rows.length
 
-    const availableAmbulances = Math.max(0, (totalDrivers || 0) - (busyDrivers || 0))
+    const tokenUserIds = await fetchPushReachability(
+      supabase,
+      rows.filter((d) => d.status === 'available').map((d) => d.user_id as string),
+    )
 
-    // Get on-duty drivers
-    const { count: onDutyDrivers } = await supabase
-      .from('drivers')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'available')
+    const driverPresence = summarisePresence(
+      rows.map((d) => ({
+        status: d.status,
+        lastUpdatedAt: d.last_updated_at,
+        currentRequestId: d.current_request_id,
+        hasPushToken: tokenUserIds ? tokenUserIds.has(d.user_id as string) : null,
+      })),
+    )
+
+    // "Available ambulances" = drivers who can take a NEW emergency: on duty and
+    // reachable, minus the ones already on a trip.
+    const availableAmbulances = driverPresence.on_duty
+    const onDutyDrivers = driverPresence.dispatchable
 
     // Calculate average response time from recent completed SOS requests, using the
     // real requested_at / assigned_at timestamps.
@@ -131,6 +145,10 @@ export async function GET(request: NextRequest) {
       activeEmergencies: activeEmergencies || 0,
       availableAmbulances: availableAmbulances || 0,
       onDutyDrivers: onDutyDrivers || 0,
+      driversOnTrip: driverPresence.on_trip,
+      driversNeedAttention: driverPresence.needs_attention,
+      driversOffDuty: driverPresence.off_duty,
+      driversLiveGps: driverPresence.liveGps,
       avgResponseTime,
       completedToday: completedToday || 0,
       pendingAssignments: pendingAssignments || 0,

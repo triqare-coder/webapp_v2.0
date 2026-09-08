@@ -2,6 +2,13 @@
 
 Live snapshot: **6 Sep 2026**, read from production (26 driver records).
 
+> **Status — 7 Sep 2026: implemented (steps 1–4).** The four states ship from one
+> file and every dashboard, tile, badge and filter reads them. Verified against
+> production through the real code: **On Duty 11 · On Trip 1 · Needs Attention 5
+> · Off Duty 9**, dispatchable 12 (was 1). Fault A was fixed *without* the
+> migration — see the revised step 1 below. Still open: the driver app's own
+> wording (step 5, needs a build) and background location (step 6).
+
 ---
 
 ## TL;DR
@@ -65,8 +72,8 @@ Counts are live as of this morning. Eleven are visible to staff; two more exist 
 | **Busy (SOS)** | ER Team tile, filter, badge | List: holding a live SOS. Dashboard: `status != 'available'` | 1 / 9 | Merge into On Trip |
 | **Offline** | ER Team tile, filter, badge | Signed out — and also absorbs unreachable drivers | 9 | Rename **Off Duty** |
 | **Inactive** | Admin + Transport driver lists | `drivers.status='inactive'` — same thing as Offline | 9 | Retire — duplicate |
-| **No app signal** | Code only; can appear on any badge | On duty but no push device registered | 5 | → Needs Attention |
-| **Duty unknown** | Code only — **showing on Admin right now** | The reachability lookup failed | 16 | → Needs Attention |
+| **No app signal** | Retired | On duty but no push device registered | 5 | → **Needs Attention** ✅ |
+| **Duty unknown** | Retired | The reachability lookup failed | 16 → 0 | → **Needs Attention** ✅ |
 
 ---
 
@@ -124,19 +131,38 @@ All four surfaces read from one file — `src/lib/driverPresence.ts` — with th
 
 ---
 
-## Part 5 — Order of work for next week
+## Part 5 — Order of work, and what was done
 
-Step 1 makes today's numbers correct without touching a line of application code, so the fleet is visible again on Monday. Everything after that is the simplification.
+| # | Work | Status |
+|---|---|---|
+| 1 | **Make reachability work on live** | ✅ **Done — differently.** See below. |
+| 2 | Collapse `driverPresence.ts` to four states | ✅ Done. `on_trip` / `on_duty` / `needs_attention` / `off_duty`, with live GPS as a `hasLiveGps` flag and `reason` ('no_device' / 'unchecked') on Needs Attention. 22 unit tests. |
+| 3 | Repoint every screen at it | ✅ Done. Admin dashboard + driver list, ER Team dashboard + driver list + detail + map + monitoring, Transport dashboard + driver list. The ER Team dashboard's `busy = status != 'available'` query and the ER Team row's duplicate raw badge are both gone. Filters now filter by duty state, in the query, so server pagination stays correct. |
+| 4 | Move **Verified** out of the status row | ✅ Done. It is a subline on Total Drivers with its own filter; the presence row is four duty tiles. |
+| 5 | Match the driver app's wording | ⬜ Open. Needs an APK/TestFlight build, so it lands behind the dashboards. |
+| 6 | Fix the location heartbeat (background tracking) | ⬜ Open. Until it ships, "sending live GPS" reads 0 — which is why nothing leads with it. |
 
-| # | Work | Effort | Notes |
-|---|---|---|---|
-| 1 | **Apply `driver_push_reachability.sql` to live** | ~5 min | **Blocker.** Already written, idempotent, reviewed. "On Duty Now" goes 1 → 12 immediately; the 5 unreachable drivers become visible for the first time. |
-| 2 | Collapse `driverPresence.ts` to four states | ½ day | Return exactly `on_trip`, `on_duty`, `needs_attention`, `off_duty`. Keep `online` internally as a *flag* on On Duty, not a state. |
-| 3 | Repoint every screen at it | 1 day | Admin dashboard, Admin driver list, ER Team dashboard, ER Team driver list, Transport dashboard, Transport driver list. Two specific repairs: the ER Team dashboard's `busy = not available` query, and the ER Team row's duplicate raw badge. |
-| 4 | Move **Verified** out of the status row | 1 hr | Own column, own filter, both driver lists. |
-| 5 | Match the driver app's wording | ½ day + build | On Duty / Off Duty pill + "notifications are off" warning. Needs an APK/TestFlight build, so it lands a few days behind the dashboards — acceptable, since the dashboards are the complaint. |
-| 6 | Fix the location heartbeat (background tracking) | 2–3 days | Follow-up. Makes "sending live location" meaningful and the map trustworthy. The only item that genuinely belongs in a later sprint; everything above is independent of it. |
+### How step 1 was actually fixed
 
----
+Pasting the DDL would have worked, and it is still worth doing. But a portal that
+cannot count its own fleet until a human runs a migration by hand has a single
+point of failure with no owner — the SQL sat unapplied for four days while every
+dashboard reported 1 driver of 12. So the dependency is gone instead:
+
+- **Server callers** (the dashboard routes and `DriverService`, which hold the
+  service-role client) try `driver_push_reachability`, and on PGRST202/42501 fall
+  back to reading `device_tokens` directly. No DDL, nothing to un-deploy.
+- **Browser callers** (the ER Team list) go through `POST /api/drivers/reachability`,
+  staff-gated, returning ids only. That is also a better boundary than the RPC's
+  `GRANT EXECUTE ... TO anon`, which let anyone holding the public anon key probe
+  which drivers have the app installed.
+
+Applying `migrations/99_updates/driver_push_reachability.sql` remains a small win
+— it makes the RPC path win and saves the fallback query — but it is now an
+optimisation, not a blocker.
 
 *Figures read live from production 6 Sep 2026: 26 driver records, 17 with `status='available'`, 17 with an active push device (12 of them among the 17 available), freshest GPS position 235 minutes old, 26/26 verified. Derivations traced from `src/lib/driverPresence.ts`, `src/lib/driverReachability.ts`, `src/services/driverService.ts`, `src/services/sosService.ts` and the six dashboard routes.*
+
+*Re-verified 7 Sep 2026 through the shipped code against the same production
+project: reachability resolved 12 of 17 with the RPC still absent, giving On Duty
+11 · On Trip 1 · Needs Attention 5 (all 5 'no_device', 0 unchecked) · Off Duty 9.*

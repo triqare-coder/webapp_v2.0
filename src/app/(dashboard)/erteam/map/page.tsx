@@ -133,11 +133,13 @@ export default function ERTMapPage() {
     return markers
   }, [drivers, hospitals])
 
-  // Summary counts
+  // Summary counts. 'onDuty' is the drivers dispatch can reach, not the ones
+  // sending live GPS — the heartbeat is foreground-only, so a live-GPS count
+  // reads 0 for the whole fleet. See src/lib/driverPresence.ts.
   const counts = useMemo(() => ({
     drivers: drivers.length,
-    online: drivers.filter(d => d.status === 'online').length,
-    busy: drivers.filter(d => d.status === 'busy').length,
+    onDuty: drivers.filter(d => d.status === 'on_duty').length,
+    onTrip: drivers.filter(d => d.status === 'on_trip').length,
     hospitals: hospitals.length,
     total: mapMarkers.length
   }), [drivers, hospitals, mapMarkers])
@@ -213,10 +215,10 @@ export default function ERTMapPage() {
             <CardContent className="pt-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">Online</p>
-                  <p className="text-2xl font-bold text-blue-600">{counts.online}</p>
+                  <p className="text-sm text-gray-500">On Duty</p>
+                  <p className="text-2xl font-bold text-emerald-600">{counts.onDuty}</p>
                 </div>
-                <Activity className="h-8 w-8 text-blue-500" />
+                <Activity className="h-8 w-8 text-emerald-500" />
               </div>
             </CardContent>
           </Card>
@@ -224,8 +226,8 @@ export default function ERTMapPage() {
             <CardContent className="pt-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">Busy</p>
-                  <p className="text-2xl font-bold text-orange-600">{counts.busy}</p>
+                  <p className="text-sm text-gray-500">On Trip</p>
+                  <p className="text-2xl font-bold text-blue-600">{counts.onTrip}</p>
                 </div>
                 <Clock className="h-8 w-8 text-orange-500" />
               </div>
@@ -282,20 +284,20 @@ export default function ERTMapPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Truck className="h-5 w-5 text-green-500" />
-                  Online Drivers ({counts.online})
+                  On Duty ({counts.onDuty})
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3 max-h-[200px] overflow-y-auto">
-                  {drivers.filter(d => d.status === 'online').length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-4">No online drivers</p>
+                  {drivers.filter(d => d.status === 'on_duty').length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">No drivers on duty</p>
                   ) : (
-                    drivers.filter(d => d.status === 'online').map((driver) => (
+                    drivers.filter(d => d.status === 'on_duty').map((driver) => (
                       <div key={driver.id} className="p-3 border rounded-lg bg-green-50 border-green-200">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium text-sm">{driver.full_name}</span>
-                          <Badge className="bg-green-100 text-green-800">
-                            Online
+                          <Badge className="bg-emerald-100 text-emerald-800">
+                            On Duty
                           </Badge>
                         </div>
                         {driver.transport_company?.company_name && (
@@ -315,25 +317,25 @@ export default function ERTMapPage() {
               </CardContent>
             </Card>
 
-            {/* Busy Drivers */}
+            {/* Drivers on a live trip */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Activity className="h-5 w-5 text-orange-500" />
-                  Busy Drivers ({counts.busy})
+                  On Trip ({counts.onTrip})
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3 max-h-[200px] overflow-y-auto">
-                  {drivers.filter(d => d.status === 'busy').length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-4">No busy drivers</p>
+                  {drivers.filter(d => d.status === 'on_trip').length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">No drivers on a trip</p>
                   ) : (
-                    drivers.filter(d => d.status === 'busy').map((driver) => (
+                    drivers.filter(d => d.status === 'on_trip').map((driver) => (
                       <div key={driver.id} className="p-3 border rounded-lg bg-orange-50 border-orange-200">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium text-sm">{driver.full_name}</span>
-                          <Badge className="bg-orange-100 text-orange-800">
-                            Busy
+                          <Badge className="bg-blue-100 text-blue-800">
+                            On Trip
                           </Badge>
                         </div>
                         {driver.transport_company?.company_name && (

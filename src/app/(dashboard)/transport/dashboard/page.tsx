@@ -28,7 +28,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  formatLastSeen,
+  describePresence,
   getDriverPresence,
   PRESENCE_BADGE_CLASS,
   summarisePresence,
@@ -93,11 +93,17 @@ interface TransportCompany {
 
 interface TransportDashboardStats {
   totalDrivers: number
+  // The same four duty states Admin shows, scoped to this company's fleet, so
+  // the two dashboards reconcile. See src/lib/driverPresence.ts.
   dispatchableDrivers: number
-  onlineDrivers: number
-  staleDrivers: number
-  unreachableDrivers: number
-  unreachableDriverIds: string[]
+  onDutyDrivers: number
+  onTripDrivers: number
+  needsAttentionDrivers: number
+  offDutyDrivers: number
+  liveGpsDrivers: number
+  noDeviceDrivers: number
+  uncheckedDrivers: number
+  needsAttentionDriverIds: string[]
   availableDrivers: number
   busyDrivers: number
   offlineDrivers: number
@@ -226,14 +232,16 @@ export default function TransportDashboardPage() {
       currentRequestId: d.current_request_id,
     })),
   )
-  const onlineDrivers = stats?.onlineDrivers ?? presenceFallback.online
+  const liveGpsDrivers = stats?.liveGpsDrivers ?? presenceFallback.liveGps
   const dispatchableDrivers = stats?.dispatchableDrivers ?? presenceFallback.dispatchable
-  const unreachableDrivers = stats?.unreachableDrivers ?? 0
+  const needsAttentionDrivers = stats?.needsAttentionDrivers ?? 0
+  const noDeviceDrivers = stats?.noDeviceDrivers ?? 0
+  const uncheckedDrivers = stats?.uncheckedDrivers ?? 0
   // Only the stats route reads device_tokens, so the client cannot re-derive
   // reachability on its own — it badges the IDs the route reports.
-  const unreachableDriverIds = useMemo(
-    () => new Set(stats?.unreachableDriverIds ?? []),
-    [stats?.unreachableDriverIds],
+  const needsAttentionDriverIds = useMemo(
+    () => new Set(stats?.needsAttentionDriverIds ?? []),
+    [stats?.needsAttentionDriverIds],
   )
   const onTripDrivers = stats?.busyDrivers || drivers.filter(d => d.status === 'on_trip' || d.status === 'assigned').length
   const activeCases = stats?.activeAssignments || sosRequests.filter(r => r.status === 'driver_assigned' || r.status === 'in_progress').length
@@ -368,11 +376,13 @@ export default function TransportDashboardPage() {
               <div className="text-2xl font-bold text-green-600">{dispatchableDrivers}</div>
               <p className="text-xs text-muted-foreground">
                 Reachable by dispatch
-                {onlineDrivers > 0 ? ` · ${onlineDrivers} sending live GPS` : ''}
+                {liveGpsDrivers > 0 ? ` · ${liveGpsDrivers} sending live GPS` : ''}
               </p>
-              {unreachableDrivers > 0 && (
+              {needsAttentionDrivers > 0 && (
                 <p className="mt-1 text-xs font-medium text-red-600">
-                  {unreachableDrivers} available but unreachable
+                  {needsAttentionDrivers} need attention
+                  {noDeviceDrivers > 0 && ` · ${noDeviceDrivers} with no device`}
+                  {uncheckedDrivers > 0 && ` · ${uncheckedDrivers} unchecked`}
                 </p>
               )}
             </CardContent>
@@ -515,18 +525,14 @@ export default function TransportDashboardPage() {
                           status: driver.status,
                           lastUpdatedAt: driver.last_updated_at,
                           currentRequestId: driver.current_request_id,
-                          hasPushToken: unreachableDriverIds.has(driver.user_id)
+                          hasPushToken: needsAttentionDriverIds.has(driver.user_id)
                             ? false
                             : undefined,
                         })
                         return (
                           <Badge
                             className={PRESENCE_BADGE_CLASS[p.presence]}
-                            title={
-                              p.presence === 'unreachable'
-                                ? 'Marked available, but no device is registered for push — an SOS cannot reach this driver.'
-                                : `Duty status: ${getStatusLabel(driver.status)} · last position ${formatLastSeen(p.minutesSinceHeartbeat)}`
-                            }
+                            title={`${describePresence(p)} (raw status: ${getStatusLabel(driver.status)})`}
                           >
                             <span className="mr-1">●</span>
                             {p.label}

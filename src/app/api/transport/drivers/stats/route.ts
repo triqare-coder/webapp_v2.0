@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getTransportCompany } from '@/lib/auth/getTransportCompany'
+import { fetchPushReachability } from '@/lib/driverReachability'
 import {
   COMPLETED_STATUSES,
   AMBER_WINDOW_DAYS,
@@ -24,6 +25,15 @@ export async function GET() {
     if (error) {
       return NextResponse.json({ error: 'Failed to load drivers', details: error.message }, { status: 500 })
     }
+
+    // Reachability for the company's on-duty drivers, so their rows can show
+    // "Needs Attention" for a driver with no registered device instead of a
+    // green "On Duty" nobody can page. Service-role client (see
+    // getTransportCompany), so it can read the server-only token table.
+    const reachable = await fetchPushReachability(
+      supabase,
+      (drivers ?? []).filter((d) => d.status === 'available').map((d) => d.user_id as string),
+    )
 
     const windowStart = new Date()
     windowStart.setDate(windowStart.getDate() - AMBER_WINDOW_DAYS)
@@ -64,7 +74,12 @@ export async function GET() {
 
         return {
           driverId,
-          currentStatus: deriveDriverStatus(d),
+          currentStatus: deriveDriverStatus({
+            ...d,
+            // undefined would mean "not looked up"; null means the lookup ran
+            // and failed, which the badge reports honestly.
+            has_push_token: d.status === 'available' ? (reachable ? reachable.has(driverId) : null) : undefined,
+          }),
           totalTrips: totalTrips ?? 0,
           sosCancellations: cancellations,
           sosRejections: rejections,
