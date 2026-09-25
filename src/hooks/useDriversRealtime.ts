@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Driver, DriverFilters } from '@/services/driverService'
+import { useVisibleRefresh } from '@/hooks/useVisibleRefresh'
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 interface UseDriversRealtimeOptions {
@@ -11,9 +12,6 @@ interface UseDriversRealtimeOptions {
   /** Called after every background refresh (Realtime event, poll, tab refocus). */
   onRefresh?: () => void
 }
-
-// Fallback refresh cadence while the tab is visible; Realtime normally wins.
-const LIVE_POLL_MS = 15_000
 
 /**
  * Hook for fetching drivers with real-time updates via Supabase Realtime
@@ -134,23 +132,7 @@ export function useDriversRealtime(
     onRefresh?.()
   }
 
-  // `drivers` is missing from the supabase_realtime publication on live (see
-  // migrations/99_updates/transport_realtime_publication.sql), so its events
-  // never arrive, and duty also depends on device_tokens, which anon Realtime
-  // can't see at all. Poll while the tab is visible and refresh as soon as it
-  // becomes visible again.
-  useEffect(() => {
-    if (!enabled) return
-    const refreshIfVisible = () => {
-      if (document.visibilityState === 'visible') backgroundRefreshRef.current()
-    }
-    const poll = setInterval(refreshIfVisible, LIVE_POLL_MS)
-    document.addEventListener('visibilitychange', refreshIfVisible)
-    return () => {
-      clearInterval(poll)
-      document.removeEventListener('visibilitychange', refreshIfVisible)
-    }
-  }, [enabled])
+  useVisibleRefresh(() => backgroundRefreshRef.current(), enabled)
 
   // Setup realtime subscription (separate from data fetching)
   useEffect(() => {

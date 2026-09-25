@@ -6,6 +6,7 @@ import { RealtimeChannel } from '@supabase/supabase-js'
 import { SOSService } from '@/services/sosService'
 import { ERTDriverWithStatus, ERTDriverFilters, ERTDriverStats } from '@/hooks/useERTDrivers'
 import type { DriverPresence } from '@/lib/driverPresence'
+import { useVisibleRefresh } from '@/hooks/useVisibleRefresh'
 
 export interface UseERTDriversRealtimeOptions {
   enabled?: boolean
@@ -24,10 +25,11 @@ export function useERTDriversRealtime(options: UseERTDriversRealtimeOptions = {}
   const [isConnected, setIsConnected] = useState(false)
 
   // Fetch drivers function
-  const fetchDrivers = useCallback(async () => {
+  // `silent` refreshes keep the current rows on screen instead of flashing a spinner.
+  const fetchDrivers = useCallback(async (silent = false) => {
     try {
       console.log('🔄 Fetching ERT drivers with status...')
-      setLoading(true)
+      if (!silent) setLoading(true)
       setError(null)
 
       const { data, error: fetchError } = await SOSService.getAllDriversWithStatus()
@@ -52,6 +54,10 @@ export function useERTDriversRealtime(options: UseERTDriversRealtimeOptions = {}
   useEffect(() => {
     fetchDrivers()
   }, [fetchDrivers])
+
+  // Realtime alone never delivered duty changes (Off Duty -> On Duty stayed
+  // stale until F5) — see useVisibleRefresh.
+  useVisibleRefresh(() => fetchDrivers(true), enabled)
 
   // Setup realtime subscription (separate from data fetching)
   useEffect(() => {
@@ -80,7 +86,7 @@ export function useERTDriversRealtime(options: UseERTDriversRealtimeOptions = {}
           (payload) => {
             console.log('➕ Driver INSERT event:', payload)
             // Refetch to get complete driver data with joins
-            fetchDrivers()
+            fetchDrivers(true)
             if (onInsert) onInsert(payload.new)
           }
         )
@@ -94,7 +100,7 @@ export function useERTDriversRealtime(options: UseERTDriversRealtimeOptions = {}
           (payload) => {
             console.log('🔄 Driver UPDATE event:', payload)
             // Refetch to get complete driver data with joins
-            fetchDrivers()
+            fetchDrivers(true)
             if (onUpdate) onUpdate(payload.new)
           }
         )
@@ -108,7 +114,7 @@ export function useERTDriversRealtime(options: UseERTDriversRealtimeOptions = {}
           (payload) => {
             console.log('➖ Driver DELETE event:', payload)
             // Refetch to update the list
-            fetchDrivers()
+            fetchDrivers(true)
             if (onDelete) onDelete(payload.old.id)
           }
         )
@@ -145,7 +151,7 @@ export function useERTDriversRealtime(options: UseERTDriversRealtimeOptions = {}
           (payload) => {
             console.log('🚨 SOS Request event (affects driver status):', payload.eventType)
             // Refetch drivers to update busy/available status
-            fetchDrivers()
+            fetchDrivers(true)
           }
         )
         .subscribe((status, err) => {
@@ -242,7 +248,7 @@ export function useERTDriversRealtime(options: UseERTDriversRealtimeOptions = {}
     loading,
     error,
     stats,
-    refetch: fetchDrivers,
+    refetch: () => fetchDrivers(),
     isConnected
   }
 }

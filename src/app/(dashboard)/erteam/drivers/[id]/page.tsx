@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useVisibleRefresh } from '@/hooks/useVisibleRefresh'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -104,8 +105,9 @@ export default function ERTDriverDetailPage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchDriver = useCallback(async () => {
-    setLoading(true)
+  // `silent` background refreshes keep the current record on screen.
+  const fetchDriver = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setError(null)
     try {
       const { id } = await params
@@ -128,6 +130,9 @@ export default function ERTDriverDetailPage({
   useEffect(() => {
     fetchDriver()
   }, [fetchDriver])
+
+  // Duty changes made in the driver app otherwise showed only after F5.
+  useVisibleRefresh(() => fetchDriver(true))
 
   const backToList = (
     <Button variant="ghost" size="sm" onClick={() => router.push('/erteam/drivers')}>
@@ -157,7 +162,7 @@ export default function ERTDriverDetailPage({
             <AlertTriangle className="mx-auto mb-4 h-12 w-12" />
             <h3 className="mb-2 text-lg font-medium">Driver Not Available</h3>
             <p className="mb-4">{error}</p>
-            <Button onClick={fetchDriver} variant="outline">
+            <Button onClick={() => fetchDriver()} variant="outline">
               <RefreshCw className="mr-2 h-4 w-4" />
               Try Again
             </Button>
@@ -215,7 +220,7 @@ export default function ERTDriverDetailPage({
           <Badge variant="secondary">
             {driver.is_verified ? 'Verified' : 'Verification pending'}
           </Badge>
-          <Button onClick={fetchDriver} variant="outline" size="sm">
+          <Button onClick={() => fetchDriver()} variant="outline" size="sm">
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>

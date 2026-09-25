@@ -21,6 +21,7 @@ import {
   UserCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useVisibleRefresh } from '@/hooks/useVisibleRefresh'
 import {
   formatLastSeen,
   PRESENCE_BADGE_CLASS,
@@ -100,9 +101,13 @@ export default function AdminDashboardPage() {
     fetchDashboardStats()
   }, [])
 
-  const fetchDashboardStats = async () => {
+  // Driver duty tiles and the on-duty roster otherwise froze at page load.
+  useVisibleRefresh(() => fetchDashboardStats(true))
+
+  // `silent` background refreshes keep the dashboard on screen and don't toast.
+  const fetchDashboardStats = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const response = await fetch('/api/admin/dashboard/stats')
       const data = await response.json()
 
@@ -132,6 +137,7 @@ export default function AdminDashboardPage() {
       }
     } catch (error) {
       console.error('Error fetching dashboard stats:', error)
+      if (silent) return
       setError(error instanceof Error ? error.message : 'Failed to load dashboard data')
       toast.error('Failed to load dashboard data')
     } finally {
@@ -182,7 +188,7 @@ export default function AdminDashboardPage() {
           </div>
           <h2 className="mb-2 text-xl font-bold text-slate-900">Failed to Load Dashboard</h2>
           <p className="mb-5 text-sm text-slate-500">{error}</p>
-          <Button onClick={fetchDashboardStats} className="rounded-full bg-[#cc3333] hover:bg-[#b32d2d]">
+          <Button onClick={() => fetchDashboardStats()} className="rounded-full bg-[#cc3333] hover:bg-[#b32d2d]">
             Try Again
           </Button>
         </div>
