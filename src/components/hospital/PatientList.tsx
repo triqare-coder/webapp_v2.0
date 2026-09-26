@@ -28,9 +28,17 @@ function formatDate(iso: string): string {
  * from both views: they are no longer this hospital's patient in any sense
  * (US-004), and showing them as "inactive" would misrepresent that.
  */
-export function PatientList({ showSearch = true, limit }: { showSearch?: boolean; limit?: number }) {
+export function PatientList({
+  showSearch = true,
+  limit,
+  initialStatus = 'ACTIVE',
+}: {
+  showSearch?: boolean
+  limit?: number
+  initialStatus?: 'ACTIVE' | 'INACTIVE'
+}) {
   const { hospital } = useHospital()
-  const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE')
+  const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>(initialStatus)
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<Registration[]>([])
   const [count, setCount] = useState(0)

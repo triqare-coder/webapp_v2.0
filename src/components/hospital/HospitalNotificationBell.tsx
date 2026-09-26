@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useChime } from '@/hooks/useChime'
 import { useHospitalRealtime } from '@/hooks/useHospitalRealtime'
 import { useHospital } from './HospitalContext'
@@ -11,6 +12,8 @@ interface HospitalNotification {
   message: string
   read_at: string | null
   created_at: string
+  /** Where clicking lands; resolved server-side from the alert's current state. */
+  href: string | null
 }
 
 function timeAgo(iso: string): string {
@@ -25,6 +28,7 @@ function timeAgo(iso: string): string {
 /** Notification centre (6.11): bell, unread badge, mark one or all as read. */
 export function HospitalNotificationBell() {
   const { hospital } = useHospital()
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<HospitalNotification[]>([])
   const [unread, setUnread] = useState(0)
@@ -112,7 +116,13 @@ export function HospitalNotificationBell() {
               items.map((n) => (
                 <button
                   key={n.id}
-                  onClick={() => !n.read_at && mark({ id: n.id })}
+                  onClick={() => {
+                    if (!n.read_at) void mark({ id: n.id })
+                    if (n.href) {
+                      setOpen(false)
+                      router.push(n.href)
+                    }
+                  }}
                   className={`flex w-full gap-3 border-b border-neutral-100 px-4 py-3 text-left last:border-0 hover:bg-neutral-50 ${
                     n.read_at ? 'opacity-60' : ''
                   }`}
@@ -123,7 +133,10 @@ export function HospitalNotificationBell() {
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm leading-snug text-neutral-800">{n.message}</span>
-                    <span className="mt-1 block text-xs text-neutral-400">{timeAgo(n.created_at)}</span>
+                    <span className="mt-1 flex items-center justify-between text-xs text-neutral-400">
+                      {timeAgo(n.created_at)}
+                      {n.href && <span className="font-medium text-[#003366]">View →</span>}
+                    </span>
                   </span>
                 </button>
               ))

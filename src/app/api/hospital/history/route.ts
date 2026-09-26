@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireHospital } from '@/lib/auth/requireHospital'
-import { buildHistoryQuery } from './query'
+import { buildHistoryQuery, withClosure } from './query'
 
 /** GET /api/hospital/history — filterable admission history (US-009). */
 export async function GET(request: NextRequest) {
@@ -15,5 +15,5 @@ export async function GET(request: NextRequest) {
     .range(offset, offset + limit - 1)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ records: data ?? [], count: count ?? 0 })
+  return NextResponse.json({ records: await withClosure(ctx, data ?? []), count: count ?? 0 })
 }

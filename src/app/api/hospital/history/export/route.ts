@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auditHospitalAccess, requireHospital } from '@/lib/auth/requireHospital'
-import { buildHistoryQuery } from '../query'
+import { buildHistoryQuery, withClosure } from '../query'
 import { toHistoryCsv, type AdmissionHistoryRow } from '@/lib/hospital/historyColumns'
 
 /**
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   // Bulk export of patient data is exactly what the audit log is for.
   await auditHospitalAccess(ctx, `EXPORT_ADMISSION_HISTORY (${data?.length ?? 0} records)`)
 
-  const csv = toHistoryCsv((data ?? []) as AdmissionHistoryRow[])
+  const csv = toHistoryCsv((await withClosure(ctx, data ?? [])) as unknown as AdmissionHistoryRow[])
   const stamp = new Date().toISOString().slice(0, 10)
   return new NextResponse(csv, {
     headers: {

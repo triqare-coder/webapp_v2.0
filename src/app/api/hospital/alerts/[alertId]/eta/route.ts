@@ -9,7 +9,7 @@ import { drivingEtaMinutes } from '@/lib/hospital/eta'
  * The ETA is computed HERE rather than reported by the driver app. The mobile
  * app does compute a route, but it never persists the duration, so the number
  * exists only on the driver's phone. What IS in the database is the driver's
- * live position (drivers.current_latitude/longitude, updated for tracking), and
+ * live position (drivers.latitude/longitude, updated for tracking), and
  * that plus the destination is enough to recompute the ETA server-side -- no
  * mobile release required.
  *
@@ -48,12 +48,17 @@ export async function GET(
     .maybeSingle()
   if (!sos?.driver_id) return NextResponse.json({ etaMinutes: null, reason: 'no_driver' })
 
-  const { data: driver } = await supabase
+  // Live columns are latitude/longitude/last_updated_at. The repo schema's
+  // current_latitude/current_longitude/last_location_update do not exist on this
+  // database, and selecting them failed the whole read -- which is why every
+  // confirmed-incoming banner said "ETA unavailable".
+  const { data: driver, error: driverError } = await supabase
     .from('drivers')
-    .select('current_latitude, current_longitude, last_location_update')
+    .select('latitude, longitude, last_updated_at')
     .eq('user_id', sos.driver_id)
     .maybeSingle()
-  if (driver?.current_latitude == null || driver?.current_longitude == null) {
+  if (driverError) console.error('[hospital-eta] drivers read failed', driverError.message)
+  if (driver?.latitude == null || driver?.longitude == null) {
     return NextResponse.json({ etaMinutes: null, reason: 'no_driver_location' })
   }
 
@@ -67,7 +72,7 @@ export async function GET(
   }
 
   const eta = await drivingEtaMinutes(
-    { lat: Number(driver.current_latitude), lng: Number(driver.current_longitude) },
+    { lat: Number(driver.latitude), lng: Number(driver.longitude) },
     { lat: Number(destination.latitude), lng: Number(destination.longitude) },
   )
   if (eta == null) return NextResponse.json({ etaMinutes: null, reason: 'route_unavailable' })
@@ -84,6 +89,6 @@ export async function GET(
   return NextResponse.json({
     etaMinutes: eta,
     etaUpdatedAt: nowIso,
-    driverLocationAt: driver.last_location_update ?? null,
+    driverLocationAt: driver.last_updated_at ?? null,
   })
 }

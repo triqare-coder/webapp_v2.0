@@ -26,6 +26,34 @@ export interface HospitalAlert {
 
 const ETA_REFRESH_MS = 60_000
 
+/**
+ * Dismissals are remembered per browser, keyed by alert AND state. A refresh no
+ * longer brings back a banner the ward already dismissed, but a dismissed red
+ * beacon still reappears when it becomes "confirmed incoming" or a stand-down,
+ * because that is new information. Storage can be unavailable (private mode,
+ * blocked site data); the banner then simply behaves as before.
+ */
+const DISMISS_LIMIT = 200
+const dismissKey = (a: Pick<HospitalAlert, 'id' | 'status'>) => `${a.id}:${a.status}`
+const storageKey = (hospitalId: string) => `qsos-hospital-dismissed:${hospitalId}`
+
+function readDismissed(hospitalId: string): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(storageKey(hospitalId))
+    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function writeDismissed(hospitalId: string, keys: Set<string>) {
+  try {
+    window.localStorage.setItem(storageKey(hospitalId), JSON.stringify([...keys].slice(-DISMISS_LIMIT)))
+  } catch {
+    // Non-fatal: the dismissal still holds for this page view.
+  }
+}
+
 function clockTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
 }
@@ -39,12 +67,29 @@ function clockTime(iso: string): string {
  * blockers": there is nothing for a blocker to suppress.
  *
  * Dismissing hides the banner and stops the sound but changes no state: the
- * alert stays in the notification centre and on the patient record (AC3).
+ * alert stays in the notification centre and on the Patients tab / Admission
+ * History, both reachable by clicking its notification (AC3).
  */
 export function SosBeacon() {
   const { hospital } = useHospital()
   const [alerts, setAlerts] = useState<HospitalAlert[]>([])
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const hospitalId = hospital?.hospitalId ?? null
+
+  useEffect(() => {
+    if (hospitalId) setDismissed(readDismissed(hospitalId))
+  }, [hospitalId])
+
+  const dismiss = useCallback(
+    (a: HospitalAlert) => {
+      setDismissed((prev) => {
+        const next = new Set(prev).add(dismissKey(a))
+        if (hospitalId) writeDismissed(hospitalId, next)
+        return next
+      })
+    },
+    [hospitalId],
+  )
   const [eta, setEta] = useState<Record<string, number | null>>({})
   const { start, stop, unlock, volume, setVolume, blocked } = useSiren()
   const startedFor = useRef<string | null>(null)
@@ -65,13 +110,15 @@ export function SosBeacon() {
   })
 
   // The alert on screen: the newest one still in play that has not been
-  // dismissed. Cancellations are shown too, so a hospital sees WHY it stood down.
+  // dismissed. Stand-downs are shown too, so a hospital sees WHY it stood down --
+  // from the moment it is told, not only once the SOS ends at the other hospital.
+  // An admitted alert (outcome ADMITTED) never shows: the patient is already here.
   const active = useMemo(
     () =>
       alerts.find(
         (a) =>
-          !dismissed.has(a.id) &&
-          (a.status !== 'CANCELLED' || (a.outcome === 'CANCELLED' && a.destination_label)),
+          !dismissed.has(dismissKey(a)) &&
+          (a.status === 'CANCELLED' ? !!a.destination_label : a.outcome === 'PENDING'),
       ) ?? null,
     [alerts, dismissed],
   )
@@ -199,7 +246,7 @@ export function SosBeacon() {
               </Link>
             )}
             <button
-              onClick={() => setDismissed((prev) => new Set(prev).add(active.id))}
+              onClick={() => dismiss(active)}
               className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
             >
               Dismiss
@@ -224,7 +271,7 @@ export function SosBeacon() {
 
           {!cancelled && (
             <p className="text-xs text-neutral-400">
-              Dismissing keeps this alert in your notification centre and on the patient record.
+              Dismissing keeps this alert on the Patients tab and in your notifications.
             </p>
           )}
         </div>

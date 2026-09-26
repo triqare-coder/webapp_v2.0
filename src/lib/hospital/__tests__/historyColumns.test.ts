@@ -39,19 +39,25 @@ describe('admission history destination (US-009)', () => {
 describe('CSV export (US-009 AC3/AC5)', () => {
   it('leaves the ETA blank for an off-platform destination', () => {
     const cells = historyRowToCells({ ...base, destination_kind: 'nearby', eta_at_confirmation_minutes: 9 })
-    expect(cells[7]).toBe('')
+    expect(cells[8]).toBe('')
+  })
+
+  it('dates the record by when it closed, not when the SOS began', () => {
+    const cells = historyRowToCells({ ...base, closed_at: '2026-08-25T10:25:00.000Z' })
+    expect(cells[0]).toBe('2026-08-25T10:25:00.000Z')
+    expect(cells[1]).toBe('2026-08-25T10:00:00.000Z')
   })
 
   it('keeps the ETA for a confirmed QSoS destination', () => {
-    expect(historyRowToCells(base)[7]).toBe('12')
+    expect(historyRowToCells(base)[8]).toBe('12')
   })
 
   it('retains name, blood group and conditions for a departed patient', () => {
     // The snapshot is the whole point: this row outlives the patient's account.
     const cells = historyRowToCells(base)
-    expect(cells[1]).toBe('Anil Kumar')
-    expect(cells[2]).toBe('O+')
-    expect(cells[3]).toBe('Diabetes')
+    expect(cells[2]).toBe('Anil Kumar')
+    expect(cells[3]).toBe('O+')
+    expect(cells[4]).toBe('Diabetes')
   })
 
   it('quotes a value containing a comma rather than splitting the row', () => {
@@ -73,11 +79,11 @@ describe('CSV export (US-009 AC3/AC5)', () => {
     expect(csv).not.toMatch(/,=cmd/)
     // historyRowToCells returns raw values; escaping is toHistoryCsv's job.
     expect(toHistoryCsv([{ ...base, patient_name: '-1+1' }])).toContain("'-1+1")
-    expect(historyRowToCells({ ...base, patient_name: '-1+1' })[1]).toBe('-1+1')
+    expect(historyRowToCells({ ...base, patient_name: '-1+1' })[2]).toBe('-1+1')
   })
 
   it('emits a header row even with no records', () => {
-    expect(toHistoryCsv([]).split('\r\n')).toEqual(['Date & Time,Patient Name,Blood Group,Known Conditions,Registration Type,Outcome,Destination,ETA at Confirmation (min)'])
+    expect(toHistoryCsv([]).split('\r\n')).toEqual(['Date & Time,SOS Triggered,Patient Name,Blood Group,Known Conditions,Registration Type,Outcome,Destination,ETA at Confirmation (min)'])
   })
 })
 

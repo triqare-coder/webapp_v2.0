@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useHospital } from '@/components/hospital/HospitalContext'
 import { useHospitalRealtime } from '@/hooks/useHospitalRealtime'
 import { PatientList } from '@/components/hospital/PatientList'
@@ -10,6 +11,12 @@ interface Kpis {
   livesSaved: number
   primaryPatients: number
   secondaryPatients: number
+}
+
+function RegisteredPatients() {
+  // ?registered=INACTIVE comes from an "account deleted" notification.
+  const initialStatus = useSearchParams().get('registered') === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE'
+  return <PatientList key={initialStatus} initialStatus={initialStatus} />
 }
 
 /**
@@ -54,7 +61,8 @@ export default function HospitalHomePage() {
           {hospitalLoading ? 'Loading…' : `${hospital?.hospitalName} — QSOS Hospital Dashboard`}
         </h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Live emergency alerts and your registered patients.
+          Every patient who has chosen your hospital as their primary or secondary emergency hospital.
+          Live emergencies are on the Patients tab.
         </p>
       </header>
 
@@ -82,7 +90,9 @@ export default function HospitalHomePage() {
         />
       </div>
 
-      <PatientList showSearch={false} limit={10} />
+      <Suspense fallback={null}>
+        <RegisteredPatients />
+      </Suspense>
     </div>
   )
 }

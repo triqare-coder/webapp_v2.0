@@ -4,9 +4,13 @@ import { requireHospital } from '@/lib/auth/requireHospital'
 /**
  * GET /api/hospital/alerts — live SOS alerts for this hospital (US-006/007/008).
  *
- * Returns anything still in play (PENDING or CONFIRMED_INCOMING) plus alerts
- * cancelled in the last hour, so a hospital that was stood down still sees WHY
- * its beacon disappeared rather than having it silently vanish.
+ * Returns anything still in play plus alerts cancelled in the last hour, so a
+ * hospital that was stood down still sees WHY its beacon disappeared rather than
+ * having it silently vanish.
+ *
+ * "Still in play" is outcome PENDING, not status alone: an admitted alert keeps
+ * status CONFIRMED_INCOMING forever, and selecting on status kept re-raising the
+ * green "confirmed incoming" banner for patients who had already arrived.
  */
 export async function GET() {
   const ctx = await requireHospital()
@@ -21,7 +25,7 @@ export async function GET() {
       'id, sos_request_id, patient_id, registration_type, status, outcome, triggered_at, confirmed_at, cancelled_at, destination_label, destination_kind, eta_minutes, eta_updated_at, eta_at_confirmation_minutes, patient_name, blood_group, known_conditions, allergies',
     )
     .eq('hospital_id', hospitalId)
-    .or(`status.in.(PENDING,CONFIRMED_INCOMING),cancelled_at.gte.${cancelledSince}`)
+    .or(`and(outcome.eq.PENDING,status.in.(PENDING,CONFIRMED_INCOMING)),cancelled_at.gte.${cancelledSince}`)
     .order('triggered_at', { ascending: false })
     .limit(20)
 

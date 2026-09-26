@@ -1,5 +1,7 @@
 export interface AdmissionHistoryRow {
   triggered_at: string
+  /** When the incident closed (admitted / stood down / cancelled). */
+  closed_at?: string | null
   patient_name: string | null
   blood_group: string | null
   known_conditions: string | null
@@ -24,6 +26,7 @@ function escapeCell(value: string): string {
 
 export const HISTORY_HEADERS = [
   'Date & Time',
+  'SOS Triggered',
   'Patient Name',
   'Blood Group',
   'Known Conditions',
@@ -45,6 +48,8 @@ export function destinationLabel(row: AdmissionHistoryRow): string {
 
 export function historyRowToCells(row: AdmissionHistoryRow): string[] {
   return [
+    // US-009 "Date & Time" is when the outcome happened, not when the SOS began.
+    new Date(row.closed_at ?? row.triggered_at).toISOString(),
     new Date(row.triggered_at).toISOString(),
     row.patient_name ?? '',
     row.blood_group ?? '',

@@ -103,8 +103,8 @@ export default function HospitalPatientProfilePage({
     return (
       <div className={`${HOSPITAL_CARD} p-8 text-center`}>
         <p className="text-sm text-[#cc3333]">{error}</p>
-        <Link href="/hospital/patients" className="mt-4 inline-block text-sm font-medium text-[#003366] hover:underline">
-          Back to patients
+        <Link href="/hospital" className="mt-4 inline-block text-sm font-medium text-[#003366] hover:underline">
+          Back to registered patients
         </Link>
       </div>
     )
@@ -131,7 +131,7 @@ export default function HospitalPatientProfilePage({
             />
           ) : null}
           <div>
-          <Link href="/hospital/patients" className="text-sm text-neutral-500 hover:underline">
+          <Link href="/hospital" className="text-sm text-neutral-500 hover:underline">
             ← Registered Patients
           </Link>
           <h1 className="mt-1 text-2xl font-semibold text-[#003366]">{name}</h1>
