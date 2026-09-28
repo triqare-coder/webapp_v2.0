@@ -202,7 +202,7 @@ export default function AddTransportCompanyPage() {
                   type="radio"
                   name="user_mode"
                   checked={userMode === 'new'}
-                  onChange={() => setUserMode('new')}
+                  onChange={() => { setUserMode('new'); setProvisionError(null) }}
                 />
                 Create a new login
               </label>
@@ -211,7 +211,7 @@ export default function AddTransportCompanyPage() {
                   type="radio"
                   name="user_mode"
                   checked={userMode === 'existing'}
-                  onChange={() => setUserMode('existing')}
+                  onChange={() => { setUserMode('existing'); setProvisionError(null) }}
                 />
                 Use an existing user
               </label>

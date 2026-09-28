@@ -52,14 +52,17 @@ export async function POST(request: NextRequest) {
 
     const { data: existingUser } = await supabase
       .from('users')
-      .select('id')
+      .select('id, role, full_name')
       .eq('email', email)
       .maybeSingle()
     if (existingUser) {
-      return NextResponse.json(
-        { error: `An account already exists for ${email}. Select it under "Use an existing user" instead.`, success: false },
-        { status: 409 }
-      )
+      // Only transport_company accounts are offered under "Use an existing user",
+      // so pointing every collision there sent operators to an account the picker
+      // never lists (e.g. a hospital admin's email).
+      const error = existingUser.role === 'transport_company'
+        ? `An account already exists for ${email}. Select it under "Use an existing user" instead.`
+        : `${email} is already registered as a ${existingUser.role} account${existingUser.full_name ? ` (${existingUser.full_name})` : ''}. Use a different email for this company's login.`
+      return NextResponse.json({ error, success: false }, { status: 409 })
     }
 
     // Create the login. The handle_new_auth_user() trigger provisions the
