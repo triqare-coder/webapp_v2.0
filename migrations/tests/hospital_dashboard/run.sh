@@ -21,7 +21,8 @@ docker run -d --name $C -e POSTGRES_PASSWORD=test postgres:16-alpine >/dev/null
 for _ in $(seq 1 60); do docker exec $C pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
 
 for f in "$HERE/00_fixture.sql" migrations/99_updates/hospital_dashboard.sql \
-         "$HERE/01_lifecycle.sql" "$HERE/02_isolation.sql" "$HERE/03_scenarios.sql"; do
+         migrations/99_updates/hospital_sos_notifications_dedupe.sql \
+         "$HERE/01_lifecycle.sql" "$HERE/02_isolation.sql" "$HERE/03_scenarios.sql" "$HERE/04_notifications.sql"; do
   docker cp "$f" $C:/tmp/ >/dev/null
 done
 
@@ -32,13 +33,19 @@ echo "migration applied"
 # Applied twice: every 99_updates file must be safe to re-run.
 docker exec $C psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/hospital_dashboard.sql >/dev/null 2>&1
 echo "migration re-applied (idempotent)"
+# Later patches to the same feature, each applied twice as well.
+for p in hospital_sos_notifications_dedupe; do
+  docker exec $C psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/$p.sql >/dev/null 2>&1
+  docker exec $C psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/$p.sql >/dev/null 2>&1
+  echo "$p applied twice"
+done
 
 # Assertions raise, so psql's exit status matters -- but so does the output,
 # because a raised EXCEPTION inside a DO block still prints ERROR. Both are
 # checked: an earlier version piped straight to grep and reported success while
 # an assertion was failing in plain sight.
 failed=0
-for f in 01_lifecycle 02_isolation 03_scenarios; do
+for f in 01_lifecycle 02_isolation 03_scenarios 04_notifications; do
   out=$(docker exec $C psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/$f.sql 2>&1) || failed=1
   echo "$out" | grep -E "PASS|FAIL|ERROR" | sed 's/^psql:[^ ]* NOTICE:  //' || true
   if echo "$out" | grep -qE "FAIL|ERROR"; then failed=1; fi
