@@ -28,6 +28,9 @@ export const PUBLIC_PREFIXES = [
   '/mobile-app-required',
   '/test-mobile-redirect',
   '/api/webhooks',
+  // QSoS Pro checkout — called by the mobile app with a Bearer token (no cookie
+  // session); every route authenticates itself via requirePatient().
+  '/api/pro',
   // SOS push-dispatch webhook — called machine-to-machine by the Postgres pg_net
   // trigger (no user session); it authenticates via PUSH_DISPATCH_SECRET.
   '/api/push',
